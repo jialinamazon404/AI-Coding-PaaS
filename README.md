@@ -1,6 +1,36 @@
-# AI Team Pipeline
+# DevForge - AI Team Pipeline
 
-基于 **OpenCode + Superpowers** 的多角色 AI 开发团队系统。每个角色有独立目标、自主思考和结构化输出。
+> **版本**: v2.1.0
+> 基于 **OpenCode + Superpowers** 的多角色 AI 开发团队系统。
+
+## v2.1.0 更新内容
+
+### 🚀 Sprint 模式
+- 支持 Product → Architect → Scout → Developer → Tester → Ops → Evolver 完整流程
+- 每个角色读取前序角色的输出作为输入
+- Sprint/Iteration 状态管理，支持暂停、继续、重跑
+
+### 📐 OpenSpec 贯穿架构与开发
+- **Architect** 生成 OpenSpec 架构文档 (YAML)
+- **Developer** 读取 OpenSpec 实现代码
+- OpenSpec 包含：技术选型、API 设计、数据模型、目录结构
+
+### 🧪 Tester 使用 gstack 进行本地测试
+- 直接读取 `workspace/{sprintId}/developer/` 下的生成代码
+- 使用 gstack headless browser 测试前端 UI
+- 生成两份报告：功能测试 + 接口安全
+
+### 🎨 Dashboard UI 改造
+- Vue 官方首页风格 (深色主题 + 霓虹绿高亮)
+- 毛玻璃效果 + 发光边框
+- 响应式布局
+
+### 🔧 技术改进
+- sprint-agent-executor.js 独立执行器
+- WebSocket 实时状态更新
+- 本地代码路径直接读取
+
+---
 
 ## 技术栈
 
@@ -9,66 +39,86 @@
 | 编排层 | OpenCode CLI (`opencode run`) |
 | Model | `opencode/big-pickle`, `opencode/gpt-5-nano` |
 | Skills | Superpowers Skills + gstack Skills |
-| 设计规范 | OpenSpec (YAML) |
-| 前端 | Vue 3 + Vite + Pinia |
-| 后端 | Express.js + Socket.io |
+| 前端 Dashboard | Vue 3 + Vite + Tailwind CSS |
+| 后端 API | Express.js + Socket.io |
+| 生成代码 | 根据 OpenSpec 动态选择 (Vue/React + Express/Spring) |
 
-## 架构
+---
+
+## 角色定义
+
+| 角色 | 图标 | 目标 | 输入 | 输出 | 模型 | Skill |
+|------|------|------|------|------|------|-------|
+| **Product** | 📋 | 需求分析 | 用户原始需求 | PRD (JSON) | `big-pickle` | brainstorming |
+| **Architect** | 🏗️ | 架构设计 | PRD | OpenSpec (YAML) | `big-pickle` | plan-eng-review |
+| **Scout** | 🔍 | 可行性验证 | 用户需求 | 风险评估报告 | `gpt-5-nano` | - |
+| **Developer** | 💻 | 代码实现 | PRD + OpenSpec | 前端/后端代码 + README + API.md | `big-pickle` | test-driven-development |
+| **Tester** | 🧪 | 功能+安全测试 | 代码路径 | test-report.md + security-report.md | `big-pickle` | gstack/qa |
+| **Ops** | ⚙️ | 部署配置 | OpenSpec | Dockerfile/部署配置 | `gpt-5-nano` | ship |
+| **Evolver** | 🔄 | 重构优化 | 现有代码 | 重构建议报告 | `gpt-5-nano` | - |
+
+### 角色详细说明
+
+#### 📋 Product (产品经理)
+- **目标**: 理解需求，生成完整的 PRD 文档
+- **输入**: 用户原始需求 + 用户补充输入
+- **输出**: JSON 格式 PRD，包含产品概述、用户画像、用户故事、功能清单、验收标准
+- **Skill**: brainstorming - 需求分析
+
+#### 🏗️ Architect (架构师)
+- **目标**: 根据 PRD 生成系统架构设计
+- **输入**: PRD 文档
+- **输出**: OpenSpec (YAML)，包含系统架构图、技术选型、API 设计、数据模型
+- **Skill**: plan-eng-review - 架构设计评审
+
+#### 🔍 Scout (侦察兵)
+- **目标**: 验证技术可行性，识别风险
+- **输入**: 用户需求 + OpenSpec
+- **输出**: 风险评估报告，包含技术风险、实施难点、替代方案
+- **Skill**: 无
+
+#### 💻 Developer (开发者)
+- **目标**: 根据 OpenSpec 实现完整代码
+- **输入**: PRD + OpenSpec
+- **输出**: 
+  - `developer/frontend/` - 前端代码
+  - `developer/backend/` - 后端代码 (如有)
+  - `README.md` - 运行说明
+  - `API.md` - 接口文档 (如有)
+- **Skill**: test-driven-development - TDD 开发
+
+#### 🧪 Tester (测试工程师)
+- **目标**: 功能测试 + 接口安全测试
+- **输入**: 本地代码路径 (`workspace/{sprintId}/developer/`)
+- **输出**:
+  - `output/test-report.md` - 功能测试报告
+  - `output/security-report.md` - 接口安全报告
+- **Skill**: gstack/qa - 使用 headless browser 进行 UI 测试
+
+#### ⚙️ Ops (运维工程师)
+- **目标**: 生成部署配置
+- **输入**: OpenSpec
+- **输出**: Dockerfile, docker-compose.yml, CI/CD 配置
+- **Skill**: ship - 部署配置
+
+#### 🔄 Evolver (进化顾问)
+- **目标**: 代码重构与优化
+- **输入**: 现有代码
+- **输出**: 重构建议报告，包含性能优化、代码质量改进
+- **Skill**: 无
+
+---
+
+## OpenSpec 流转
 
 ```
-用户请求
+Product (生成 PRD)
     ↓
-┌─────────────────────────────────────────────────────────┐
-│                    OMC 编排层                           │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ Gatekeeper (守门人) - 路由决策 + 派发任务         │   │
-│  └─────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                           ↓
-    ┌──────────────────────────────────────────────────┐
-    ↓                    ↓                    ↓
-┌────────┐        ┌────────────┐        ┌──────────┐
-│Product │   →   │ Architect  │   →    │ Developer│
-│ 📋    │        │  🏗️        │         │  💻     │
-└────────┘        └────────────┘         └──────────┘
-    ↓                    ↓                    ↓
-┌────────┐        ┌────────────┐        ┌──────────┐
-│ Scout  │   →   │  Tester   │   →    │   Ops    │
-│ 🔍    │        │  🧪       │         │  ⚙️     │
-└────────┘        └────────────┘         └──────────┘
-                         ↓
-              ┌────────────┐        ┌──────────┐
-              │  Creative │   →    │ Evolver  │
-              │  🎨       │         │  🔄     │
-              └────────────┘         └──────────┘
-```
-
-## 角色职责
-
-| 角色 | 图标 | 目标 | 输出文件 | Skill |
-|------|------|------|----------|-------|
-| 产品 | 📋 | 理解需求，生成 PRD | prd.md | brainstorming |
-| 架构师 | 🏗️ | 系统设计 | **OpenSpec** | plan-eng-review |
-| 侦察兵 | 🔍 | 可行性验证 | scout-report.md | - |
-| 开发 | 💻 | 代码实现 | dev-summary.md | test-driven-development |
-| 测试 | 🧪 | 集成测试 | test-report.md | qa, browse |
-| 运维 | ⚙️ | 部署配置 | ops-config.md | ship |
-| 幽灵 | 👻 | 安全审计 | security-report.md | cso |
-| 创意 | 🎨 | 设计评审 | design-review.md | - |
-| 进化 | 🔄 | 重构优化 | evolver-report.md | - |
-
-## OpenSpec
-
-项目使用 **OpenSpec** 作为架构设计规范（YAML 格式），定义系统架构、API、数据模型、技术选型。
-
-```
-.omc/specs/{pipelineId}/openspec-v1.yaml
-```
-
-### OpenSpec 流转
-
-```
-Architect (生成) → Developer (实现) → Scout (验证) → Tester (测试) → Ops (部署)
+Architect (读取 PRD, 生成 OpenSpec)
+    ↓
+Developer (读取 OpenSpec, 实现代码) ←→ Tester (读取代码, 验证功能)
+    ↓
+Ops (读取 OpenSpec, 配置部署)
 ```
 
 ### OpenSpec 示例结构
@@ -77,31 +127,48 @@ Architect (生成) → Developer (实现) → Scout (验证) → Tester (测试)
 version: "1.0"
 project:
   name: "项目名"
-  type: "web-api"  # web-app | web-api | cli | library
+  type: "web-app"  # web-app | web-api | cli | library
 techStack:
-  frontend: "Vue 3"
-  backend: "Node.js/Express"
-  database: "PostgreSQL"
+  frontend: "Vue 3 + Vite"
+  backend: "Express.js"
+  database: "SQLite"
 apis:
   - path: "/api/users"
     method: "GET"
     description: "获取用户列表"
+    request:
+      - name: "page"
+        type: "number"
+        required: false
+    response:
+      - name: "users"
+        type: "array"
+database:
+  tables:
+    - name: "users"
+      columns:
+        - name: "id"
+          type: "integer"
+          primaryKey: true
 ```
 
-## Skills
+---
 
-### Superpowers Skills (Agent 映射)
+## Skills 映射
 
-| Agent | Skill | 说明 |
-|-------|-------|------|
-| product | brainstorming | 需求分析 |
-| architect | plan-eng-review | 架构设计评审 |
-| developer | test-driven-development | TDD 开发 |
-| tester | qa | 自动化 QA |
-| ops | ship | 部署配置 |
-| ghost | cso | 安全审计 |
+### Superpowers Skills
 
-### gstack Skills (测试集成)
+| Agent | 模型 | Skill | 说明 |
+|-------|------|-------|------|
+| product | `opencode/big-pickle` | brainstorming | 需求分析 |
+| architect | `opencode/big-pickle` | plan-eng-review | 架构设计评审 |
+| developer | `opencode/big-pickle` | test-driven-development | TDD 开发 |
+| tester | `opencode/big-pickle` | qa | 自动化 QA |
+| ops | `opencode/gpt-5-nano` | ship | 部署配置 |
+| scout | `opencode/gpt-5-nano` | - | 代码探索 |
+| evolver | `opencode/gpt-5-nano` | - | 重构优化 |
+
+### gstack Skills
 
 | Skill | 用途 |
 |-------|------|
@@ -111,97 +178,123 @@ apis:
 | `/canary` | 部署后健康检查 |
 | `/benchmark` | 性能回归测试 |
 
-## 决策树路由
-
-```
-请求类型 → 流水线路径
-├── CRITICAL → 产品 → 架构师 → 创意 → 开发 → 测试 → 进化
-├── BUILD    → 产品 → 架构师 → 侦察兵 → 开发 → 测试 → 运维 → 进化
-├── REVIEW   → 创意 → 幽灵 → 测试
-├── QUERY    → 侦察兵
-└── SECURITY → 幽灵 → 架构师
-```
+---
 
 ## 快速开始
 
+### 1. 启动 Dashboard
+
 ```bash
-cd /Users/jialin.chen/WorkSpace/auto_pipeline
-npm start
+cd /Users/jialin.chen/WorkSpace/DevForge
+node dashboard/server/server.js
 ```
 
-打开浏览器：http://localhost:5173
+### 2. 打开浏览器
+
+访问 http://localhost:3000
+
+### 3. 创建项目与冲刺
+
+1. 登录 (默认账号: admin / admin)
+2. 创建项目
+3. 创建冲刺，填写需求
+4. 启动冲刺，开始执行角色
+
+---
 
 ## 目录结构
 
 ```
-auto_pipeline/
-├── agents/
-│   ├── definitions.json    # 角色定义（含目标、思考模板、输出格式）
-│   ├── team-config.json    # OMC Team 配置
-│   └── ...                 # 各角色 prompt
+DevForge/
+├── sprint-agent-executor.js   # Sprint 模式 Agent 执行器
 │
 ├── dashboard/
-│   ├── server/             # API Server
-│   │   └── server.js
-│   └── src/                # Vue Dashboard
-│       └── views/
-│           └── PipelineDetail.vue  # 展示 thinking + output
+│   ├── server/
+│   │   └── server.js          # API Server (Express + Socket.io)
+│   └── src/
+│       ├── App.vue            # Vue 主组件 (深色主题)
+│       ├── style.css          # 全局样式
+│       ├── views/
+│       │   ├── Login.vue      # 登录页
+│       │   ├── ProjectList.vue
+│       │   ├── ProjectDetail.vue
+│       │   └── SprintDetail.vue
+│       └── stores/
+│           └── project.js     # Pinia 状态管理
 │
-├── gatekeeper.js           # 守门人编排逻辑
-├── workspace/              # 流水线工作区
-│   └── {pipelineId}/
-│       ├── pipeline.json   # 全局状态
-│       ├── thinking/       # 思考过程 (JSON)
-│       │   ├── 01-product.json
-│       │   └── 02-architect.json
-│       ├── output/         # 输出交付物 (Markdown)
-│       │   ├── prd.md
-│       │   └── openspec.md
-│       └── {agent}/        # Agent 工作目录
+├── workspace/                 # 工作区
+│   └── {sprintId}/
+│       ├── output/            # 输出交付物
+│       │   ├── prd.md         # Product 输出
+│       │   ├── openspec.md    # Architect 输出
+│       │   ├── test-report.md # Tester 功能报告
+│       │   └── security-report.md # Tester 安全报告
+│       └── developer/          # Developer 代码输出
+│           ├── README.md
+│           ├── API.md
+│           ├── frontend/      # 前端代码
+│           └── backend/       # 后端代码 (如有)
 │
-└── CLAUDE.md
+└── README.md
 ```
 
-## Agent 思考与输出
-
-每个 Agent 执行包含三个阶段：
-
-1. **Goal** - 明确目标
-2. **Thinking** - Chain-of-Thought 推理
-3. **Output** - 结构化交付
-
-### thinking 示例
-
-```json
-{
-  "agent": "architect",
-  "steps": [
-    {
-      "prompt": "1. 分析功能范围和技术边界",
-      "thought": "用户需要实现用户登录功能..."
-    }
-  ]
-}
-```
+---
 
 ## API 端点
 
+### 项目 API
+
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| /api/pipelines | POST | 创建流水线 |
-| /api/pipelines | GET | 列表 |
-| /api/pipelines/:id | GET | 详情 |
-| /api/pipelines/:id/thinking | GET | 思考过程 |
-| /api/pipelines/:id/output | GET | 输出结果 |
-| /api/pipelines/:id/tree | GET | 树状状态 |
-| /api/pipelines/:id/start | POST | 启动 |
+| /api/projects | POST | 创建项目 |
+| /api/projects | GET | 项目列表 |
+| /api/projects/:id | GET | 项目详情 |
+| /api/projects/:id | PUT | 更新项目 |
+| /api/projects/:id | DELETE | 删除项目 |
 
-## Dashboard 展示
+### 冲刺 API
 
-点击流水线中的角色卡片，可查看：
-- 🎯 **目标** - Agent 要完成的任务
-- 💭 **思考过程** - 推理步骤
-- 📤 **输出结果** - 交付物
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| /api/projects/:p/sprints | POST | 创建冲刺 |
+| /api/projects/:p/sprints | GET | 冲刺列表 |
+| /api/sprints/:id | GET | 冲刺详情 |
+| /api/sprints/:id | PUT | 更新冲刺 |
+| /api/sprints/:id/start | POST | 启动冲刺 |
+
+### 迭代 API
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| /api/sprints/:id/iterations/:i/input | PUT | 用户输入 |
+| /api/sprints/:id/iterations/:i/output | PUT | Agent 输出更新 |
+| /api/sprints/:id/iterations/:i/execute | POST | 执行角色 |
+| /api/sprints/:id/iterations/:i/confirm | PUT | 确认输出 |
+| /api/sprints/:id/iterations/:i/rerun | POST | 重跑角色 |
+
+---
+
+## Dashboard 功能
+
+- **项目列表**: 创建、编辑、删除项目
+- **冲刺管理**: 创建冲刺，设定目标，分配角色
+- **角色执行**: 
+  - Product → 生成 PRD
+  - Architect → 生成 OpenSpec
+  - Developer → 生成代码
+  - Tester → 生成测试报告
+- **实时状态**: WebSocket 推送执行进度
+- **日志查看**: 查看每个角色的输出日志
+
+---
+
+## 注意事项
+
+1. **本地代码测试**: Tester 直接读取 `workspace/{sprintId}/developer/` 下的代码，无需部署
+2. **OpenSpec 传递**: Architect 生成的 OpenSpec 会传递给 Developer 作为实现依据
+3. **gstack 集成**: Tester 使用 gstack 进行 UI 测试，需要确保 gstack 可用
+
+---
 
 ## License
 

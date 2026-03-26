@@ -4,46 +4,187 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+:root {
+  --vue-dark: #0f0f23;
+  --vue-darker: #0a0a1a;
+  --vue-card: #1e1e3f;
+  --vue-border: #2a2a4a;
+  --vue-primary: #42b883;
+  --vue-secondary: #35495e;
+  --vue-accent: #3ac7a9;
 }
 
-/* Custom scrollbar */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', 'Roboto', sans-serif;
+  background: linear-gradient(180deg, var(--vue-darker) 0%, var(--vue-dark) 100%);
+  color: #ffffff;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* Apple-style scrollbar - dark theme */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 4px;
+  background: rgba(66, 184, 131, 0.3);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: rgba(66, 184, 131, 0.5);
 }
 
-/* Status colors */
+/* Override for light theme classes */
+.bg-apple-gray {
+  background: transparent !important;
+}
+
+.bg-white {
+  background: var(--vue-card) !important;
+}
+
+.bg-gray-50 {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.bg-gray-100 {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.bg-gray-200 {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.bg-gray-800 {
+  background: var(--vue-card) !important;
+}
+
+.bg-gray-900 {
+  background: var(--vue-darker) !important;
+}
+
+/* Text colors */
+.text-apple-black {
+  color: #ffffff !important;
+}
+
+.text-apple-subtle {
+  color: #a0aec0 !important;
+}
+
+.text-gray-300 {
+  color: #a0aec0 !important;
+}
+
+.text-gray-400 {
+  color: #718096 !important;
+}
+
+/* Border colors */
+.border-gray-100 {
+  border-color: var(--vue-border) !important;
+}
+
+.border-gray-200 {
+  border-color: var(--vue-border) !important;
+}
+
+.border-gray-700 {
+  border-color: var(--vue-border) !important;
+}
+
+/* Button base */
+@layer components {
+  .btn-vue {
+    @apply px-4 py-2 rounded-vue font-medium transition-all duration-300;
+    @apply bg-gradient-to-r from-vue-primary to-vue-secondary;
+    @apply text-white hover:shadow-vue-glow;
+  }
+  
+  .btn-vue-outline {
+    @apply px-4 py-2 rounded-vue font-medium transition-all duration-300;
+    @apply border border-vue-primary text-vue-primary;
+    @apply hover:bg-vue-primary hover:text-white;
+  }
+
+  .card-vue {
+    @apply bg-vue-card rounded-vue border border-vue-border;
+    @apply shadow-vue-card transition-all duration-300;
+  }
+
+  .card-vue-hover {
+    @apply card-vue hover:border-vue-primary hover:shadow-vue-glow;
+  }
+}
+
+/* Status colors - Vue theme */
 .status-running {
-  @apply bg-blue-500 animate-pulse;
+  @apply bg-vue-primary;
+  animation: vue-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .status-completed {
-  @apply bg-green-500;
+  @apply bg-[#30D158];
 }
 
 .status-failed {
-  @apply bg-red-500;
+  @apply bg-[#FF3B30];
 }
 
 .status-pending {
-  @apply bg-gray-500;
+  @apply bg-[#86868B];
 }
 
 .status-stopped {
-  @apply bg-yellow-500;
+  @apply bg-[#FF9500];
+}
+
+@keyframes vue-pulse {
+  0%, 100% { 
+    opacity: 1; 
+    box-shadow: 0 0 10px rgba(66, 184, 131, 0.5);
+  }
+  50% { 
+    opacity: 0.7; 
+    box-shadow: 0 0 20px rgba(66, 184, 131, 0.8);
+  }
+}
+
+/* Input focus styles */
+input:focus, textarea:focus, select:focus {
+  @apply outline-none ring-2 ring-vue-primary ring-opacity-50;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(30, 30, 63, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #42b883 0%, #3ac7a9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 15px rgba(66, 184, 131, 0.4);
+}
+
+.glow-green-hover:hover {
+  box-shadow: 0 0 25px rgba(66, 184, 131, 0.6);
 }
