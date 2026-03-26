@@ -890,109 +890,179 @@ async function executeAgent(pipelineId, agentName, context = {}) {
 }
 
 /**
- * 执行流水线
+ * 执行 Sprint 迭代
  */
-async function runPipeline(pipelineId) {
+async function runIteration(sprintId, roleIndex) {
   console.log(`\n${'='.repeat(60)}`);
-  console.log(`🚀 AI Agent Executor - Pipeline: ${pipelineId.slice(0, 8)}`);
+  console.log(`🚀 AI Agent Executor - Sprint: ${sprintId.slice(0, 8)}, Role: ${roleIndex}`);
   console.log(`${'='.repeat(60)}`);
   
-  // 获取流水线状态
-  const { data: pipeline } = await axios.get(`${API_BASE}/api/pipelines/${pipelineId}`);
+  // 获取 Sprint 状态
+  const { data: sprint } = await axios.get(`${API_BASE}/api/sprints/${sprintId}`);
   
-  if (!pipeline) {
-    console.error('❌ 流水线不存在');
+  if (!sprint) {
+    console.error('❌ Sprint 不存在');
     return;
   }
-  
-  console.log(`📋 类型: ${pipeline.category}`);
-  console.log(`📝 需求: ${pipeline.rawInput}`);
+
+  console.log(`📝 需求: ${sprint.rawInput}`);
+  console.log(`📋 角色: ${sprint.iterations[roleIndex]?.role}`);
   
   // 收集上下文（用于传递给后续 Agent）
   const context = {
-    rawInput: pipeline.rawInput,
-    request: pipeline.context?.request
+    sprintId,
+    roleIndex,
+    rawInput: sprint.rawInput,
+    localProjectPath: sprint.localProjectPath || null,
+    prdOutput: null,
+    openspec: null,
+    developerOutput: null,
+    codePaths: null,
+    previousOutput: null,
+    workspacePath: path.join(ROOT, 'workspace', sprintId)
   };
+
+  // 获取 workspace 路径
+  const workspacePath = context.workspacePath;
   
-  // 按顺序执行每个阶段
-  for (const stage of pipeline.stages) {
-    if (pipeline.status === 'abandoned' || pipeline.status === 'stopped') {
-      console.log(`\n⏹️ 流水线已停止`);
-      break;
-    }
-    
-    if (stage.status === 'completed') {
-      console.log(`\n⏭️ 跳过 ${stage.role} (已完成)`);
-      
-      // 加载已完成的输出到上下文
-      if (stage.role === 'product') {
-        try {
-          const prdContent = await fs.readFile(
-            path.join(WORKSPACE, pipelineId, 'output', 'prd.md'),
-            'utf-8'
-          );
-          context.prd = prdContent;
-        } catch (e) {}
-      } else if (stage.role === 'architect') {
-        try {
-          const specContent = await fs.readFile(
-            path.join(WORKSPACE, pipelineId, 'output', 'openspec.md'),
-            'utf-8'
-          );
-          context.openspec = specContent;
-        } catch (e) {}
+  // 加载前面角色的输出
+  for (let i = 0; i < roleIndex; i++) {
+    const prevIteration = sprint.iterations[i];
+    if (prevIteration?.output) {
+      if (prevIteration.role === 'product') {
+        context.prdOutput = prevIteration.output;
+      } else if (prevIteration.role === 'architect') {
+        context.openspec = prevIteration.output;
+      } else if (prevIteration.role === 'developer') {
+        context.developerOutput = prevIteration.output;
       }
-      continue;
+      context.previousOutput = prevIteration.output;
     }
-    
-    // 执行 Agent
-    const result = await executeAgent(pipelineId, stage.role, context);
-    
-    if (result.success) {
-      // 将输出加入上下文传递给下一个 Agent
-      if (stage.role === 'product') {
-        context.prd = result.output;
-      } else if (stage.role === 'architect') {
-        context.openspec = result.output;
-      }
-    } else {
-      console.error(`\n❌ Agent 执行失败，流水线终止`);
-      await axios.put(`${API_BASE}/api/pipelines/${pipelineId}`, {
-        status: 'failed'
+  }
+
+  const iteration = sprint.iterations[roleIndex];
+  const role = iteration?.role;
+  
+  if (!role) {
+    console.error('❌ 角色不存在');
+    return;
+  }
+
+  const info = ROLE_INFO[role] || { icon: '🤖', name: role };
+  console.log(`\n${info.icon} ${info.name}`);
+  console.log(`   状态: ${iteration?.status}`);
+  
+  // 生成 Prompt
+  let prompt;
+  switch (role) {
+    case 'product':
+      prompt = generateProductPrompt({
+        sprintId,
+        rawInput: context.rawInput,
+        workspacePath
       });
-      return;
-    }
-    
-    // 短暂延迟
-    await new Promise(r => setTimeout(r, 1000));
+      break;
+    case 'architect':
+      prompt = generateArchitectPrompt({
+        sprintId,
+        rawInput: context.rawInput,
+        workspacePath,
+        prd: context.prdOutput
+      });
+      break;
+    case 'scout':
+      prompt = generateScoutPrompt({
+        sprintId,
+        rawInput: context.rawInput,
+        workspacePath
+      });
+      break;
+    case 'developer':
+      prompt = generateDeveloperPrompt({
+        sprintId,
+        rawInput: context.rawInput,
+        workspacePath,
+        openspec: context.openspec
+      });
+      break;
+    case 'tester':
+      prompt = generateTesterPrompt({
+        sprintId,
+        rawInput: context.rawInput,
+        workspacePath,
+        prdOutput: context.prdOutput,
+        openspec: context.openspec,
+        developerOutput: context.developerOutput,
+        codePaths: context.codePaths
+      });
+      break;
+    default:
+      prompt = `执行 ${info.name} 任务\n\n用户需求: ${context.rawInput}`;
   }
   
-  // 流水线完成
-  await axios.put(`${API_BASE}/api/pipelines/${pipelineId}`, {
-    status: 'completed',
-    currentStage: 'done'
+  console.log(`   📋 Prompt 长度: ${prompt.length} 字符`);
+  
+  // 更新状态为运行中
+  await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
+    output: '正在执行...'
   });
   
-  console.log(`\n${'='.repeat(60)}`);
-  console.log(`✅ 流水线完成`);
-  console.log(`${'='.repeat(60)}\n`);
+  try {
+    // 执行 OpenCode
+    const rawOutput = await runOpenCode(prompt, {
+      model: 'opencode/big-pickle',
+      agentName: role
+    });
+    
+    console.log(`   ✅ 执行完成，输出长度: ${rawOutput.length} 字符`);
+    
+    // 解析输出
+    let output = rawOutput;
+    if (role === 'product') {
+      output = parseOpenCodeOutput(rawOutput);
+    }
+    
+    // 保存输出
+    await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
+      output
+    });
+    
+    console.log(`   ✅ 输出已保存`);
+    
+    return { success: true, output };
+  } catch (error) {
+    console.error(`   ❌ 执行失败:`, error.message);
+    await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
+      output: `执行失败: ${error.message}`
+    });
+    throw error;
+  }
 }
 
-// 主入口
+/**
+ * 主函数
+ */
 async function main() {
-  const [, , pipelineId] = process.argv;
+  const args = process.argv.slice(2);
+  const sprintId = args[0];
+  const roleIndex = args[1] ? parseInt(args[1]) : null;
   
-  if (!pipelineId) {
+  if (!sprintId) {
     console.log(`
-🤖 AI Agent Executor
+🤖 AI Agent Executor (Sprint 模式)
 
-用法: node ai-agent-executor.js <pipeline-id>
+用法: node sprint-agent-executor.js <sprint-id> [role-index]
     `);
     process.exit(1);
   }
-  
+
+  if (roleIndex === null) {
+    console.log('❌ 需要指定 roleIndex');
+    process.exit(1);
+  }
+
   try {
-    await runPipeline(pipelineId);
+    await runIteration(sprintId, roleIndex);
   } catch (error) {
     console.error('❌ 执行失败:', error);
     process.exit(1);
