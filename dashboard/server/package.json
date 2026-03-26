@@ -1,7 +1,7 @@
 {
   "name": "auto-pipeline-api",
   "version": "1.0.0",
-  "description": "AI Team Pipeline API Server",
+  "description": "Moby Dick API Server",
   "type": "module",
   "main": "server.js",
   "scripts": {

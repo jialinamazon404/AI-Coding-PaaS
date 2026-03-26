@@ -1024,7 +1024,7 @@ async function start() {
   httpServer.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║          AI Team Pipeline API Server                      ║
+║          Moby Dick API Server                      ║
 ║                                                           ║
 ║  HTTP:      http://localhost:${PORT}                         ║
 ║  WebSocket: ws://localhost:${PORT}                           ║

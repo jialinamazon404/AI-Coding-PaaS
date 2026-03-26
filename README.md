@@ -1,7 +1,7 @@
-# DevForge - AI Team Pipeline
+# Moby Dick - AI 开发舰队
 
 > **版本**: v2.2.0
-> 基于 **OpenCode + Superpowers** 的多角色 AI 开发团队系统。
+> 致敬白胡子的多角色 AI 开发团队系统（原 DevForge - Team Pipeline）
 
 ## v2.2.0 更新内容
 
