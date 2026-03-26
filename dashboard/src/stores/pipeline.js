@@ -182,6 +182,7 @@ export const usePipelineStore = defineStore('pipeline', () => {
     pipelines,
     currentPipeline,
     connected,
+    socket,
     runningCount,
     pendingCount,
     completedCount,

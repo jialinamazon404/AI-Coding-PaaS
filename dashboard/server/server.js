@@ -655,6 +655,26 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
     agentProc.on('close', (code) => {
       console.log(`[agent] Process exited with code ${code}`);
       runningAgents.delete(`${sprintId}-${roleIndex}`);
+      
+      // 等待一下让 agentProc 完全结束，然后更新状态
+      setTimeout(async () => {
+        try {
+          const sprint = await sprintManager.get(sprintId);
+          if (sprint && sprint.iterations[roleIndex]) {
+            // 只有当输出不为空时才标记为 completed，否则标记为 waiting_input
+            const output = sprint.iterations[roleIndex].output;
+            if (output && output !== '正在执行...' && !output.includes('执行失败')) {
+              sprint.iterations[roleIndex].status = 'completed';
+            } else {
+              sprint.iterations[roleIndex].status = 'waiting_input';
+            }
+            await sprintManager.save(sprintId);
+            io.emit('iteration:confirmed', { sprintId, roleIndex });
+          }
+        } catch (e) {
+          console.error('更新 iteration 状态失败:', e.message);
+        }
+      }, 1000);
     });
 
     io.emit('iteration:execution:started', { sprintId, roleIndex });

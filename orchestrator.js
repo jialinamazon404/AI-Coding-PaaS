@@ -33,6 +33,7 @@ class Orchestrator {
     await fs.mkdir(path.join(ROOT, 'state', 'pipelines'), { recursive: true });
     await fs.mkdir(path.join(ROOT, 'specs'), { recursive: true });
     await fs.mkdir(path.join(ROOT, 'logs'), { recursive: true });
+    await fs.mkdir(path.join(ROOT, 'workspace'), { recursive: true });
     
     // 加载已有状态
     await this.loadState();

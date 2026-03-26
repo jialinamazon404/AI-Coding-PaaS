@@ -1,0 +1,22 @@
+:root {
+  --bg: #f7fbff;
+  --panel: #ffffff;
+  --text: #111827;
+  --btn: #f3f4f6;
+  --btn-text: #111;
+  --accent: #2563eb;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI"; background: linear-gradient(135deg, #f7fbff 0%, #eef2ff 100%); }
+.calculator { width: min(420px, 92vw); margin: 40px auto; background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 12px 24px rgba(0,0,0,.08); }
+.display { height: 72px; border-radius: 8px; background: #111; color: #fff; font-size: 2.8rem; display:flex; align-items:center; justify-content:flex-end; padding: 0 14px; overflow:hidden; text-overflow: ellipsis; white-space:nowrap; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-gap: 12px; margin-top: 12px; }
+button { height: 58px; border-radius: 8px; border: none; font-size: 1.1rem; background: var(--btn); color: var(--btn-text); cursor: pointer; transition: transform .04s ease-in-out, background .2s; }
+button:active { transform: scale(0.98); }
+button.action { background:#e57373; color:white; }
+button.op { background:#e2e8f0; }
+button.equals { background: var(--accent); color:white; grid-column: span 1; }
+@media (max-width: 520px) {
+  .display { font-size: 2.4rem; height: 64px; }
+  .grid { grid-template-columns: repeat(4, 1fr); }
+}

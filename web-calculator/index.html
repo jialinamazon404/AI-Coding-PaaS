@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Web Calculator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="calculator" aria-label="Web Calculator">
+    <div id="display" class="display" aria-live="polite">0</div>
+    <div class="buttons" id="buttons">
+      <button class="span2" data-action="clear-all">AC</button>
+      <button data-action="backspace">DEL</button>
+      <button data-action="operator" data-operator="/">÷</button>
+
+      <button data-number="7">7</button>
+      <button data-number="8">8</button>
+      <button data-number="9">9</button>
+      <button data-action="operator" data-operator="*">×</button>
+
+      <button data-number="4">4</button>
+      <button data-number="5">5</button>
+      <button data-number="6">6</button>
+      <button data-action="operator" data-operator="-">−</button>
+
+      <button data-number="1">1</button>
+      <button data-number="2">2</button>
+      <button data-number="3">3</button>
+      <button data-action="operator" data-operator="+">+</button>
+
+      <button data-number="0" class="span2">0</button>
+      <button data-number=".">.</button>
+      <button data-action="equals" class="equal">=</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

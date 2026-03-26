@@ -311,6 +311,44 @@
         </button>
       </div>
       
+      <!-- 实时思考过程（当正在运行时） -->
+      <div v-if="selectedStage.status === 'running' && selectedStage.thinking?.steps" class="px-6 py-4 border-b border-gray-700 bg-gray-900/50">
+        <h3 class="text-sm font-medium text-blue-400 mb-3">💭 AI 思考过程</h3>
+        <div class="space-y-2">
+          <div v-for="(step, idx) in selectedStage.thinking.steps" :key="idx"
+               class="flex items-start space-x-3 text-sm">
+            <div class="w-5 h-5 rounded-full bg-blue-500/30 flex items-center justify-center text-blue-400 text-xs flex-shrink-0 mt-0.5">
+              {{ idx + 1 }}
+            </div>
+            <div class="flex-1">
+              <div class="text-gray-400">{{ step.prompt }}</div>
+              <div v-if="step.thought" class="text-gray-300 mt-1">{{ step.thought }}</div>
+              <div v-else class="text-gray-500 mt-1 italic">思考中...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 实时日志（当正在运行时） -->
+      <div v-if="pipeline.status === 'running'" class="px-6 py-4 border-b border-gray-700 bg-gray-900/30">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-sm font-medium text-green-400">📜 执行日志</h3>
+          <button @click="refreshLogs" class="text-xs text-gray-400 hover:text-white">
+            刷新
+          </button>
+        </div>
+        <div class="bg-black/50 rounded-lg p-3 font-mono text-xs max-h-48 overflow-auto">
+          <div v-for="(log, idx) in logs.slice(-20)" :key="idx" 
+               class="text-gray-400 whitespace-pre-wrap"
+               :class="{ 'text-red-400': log.type === 'agent_error' }">
+            {{ formatLogTime(log.timestamp) }} {{ log.message }}
+          </div>
+          <div v-if="logs.length === 0" class="text-gray-500 italic">
+            等待日志...
+          </div>
+        </div>
+      </div>
+      
       <!-- Tabs -->
       <div class="px-6 border-b border-gray-700">
         <div class="flex space-x-6">
@@ -629,6 +667,39 @@
                 <h4 class="text-gray-300 font-medium mb-3">📄 开发文档</h4>
                 <pre class="text-gray-300 text-sm whitespace-pre-wrap overflow-auto max-h-96">{{ selectedStage.output.fullOutput || selectedStage.output.textSummary }}</pre>
               </div>
+              
+              <!-- README 文档 -->
+              <div v-if="selectedStage.output.readme" class="bg-gray-900 rounded-lg p-4 mt-4">
+                <h4 class="text-gray-300 font-medium mb-3">📖 README 开发文档</h4>
+                <pre class="text-gray-300 text-sm whitespace-pre-wrap overflow-auto max-h-96">{{ selectedStage.output.readme }}</pre>
+              </div>
+              
+              <!-- API 接口文档表格 -->
+              <div v-if="selectedStage.output.apiDocs && selectedStage.output.apiDocs.length > 0" class="bg-gray-900 rounded-lg p-4 mt-4">
+                <h4 class="text-gray-300 font-medium mb-3">📡 API 接口文档</h4>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-sm text-left">
+                    <thead class="bg-gray-800 text-gray-400">
+                      <tr>
+                        <th class="px-3 py-2">方法</th>
+                        <th class="px-3 py-2">路径</th>
+                        <th class="px-3 py-2">描述</th>
+                        <th class="px-3 py-2">请求参数</th>
+                        <th class="px-3 py-2">响应格式</th>
+                      </tr>
+                    </thead>
+                    <tbody class="text-gray-300">
+                      <tr v-for="(api, idx) in selectedStage.output.apiDocs" :key="idx" class="border-t border-gray-700">
+                        <td class="px-3 py-2 font-mono text-green-400">{{ api.method }}</td>
+                        <td class="px-3 py-2 font-mono text-blue-400">{{ api.path }}</td>
+                        <td class="px-3 py-2">{{ api.description }}</td>
+                        <td class="px-3 py-2 text-gray-500">{{ api.request || '-' }}</td>
+                        <td class="px-3 py-2 text-gray-500">{{ api.response || '-' }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </template>
           
@@ -842,17 +913,25 @@ const currentRunningStage = computed(() => {
   return pipeline.value.stages.find(s => s.status === 'running')
 })
 
-// 思考步骤（模拟）
+// 思考步骤（实时从阶段数据获取）
 const thinkingSteps = computed(() => {
   if (!currentRunningStage.value) return []
   const stage = currentRunningStage.value
   if (stage.thinking?.steps) return stage.thinking.steps
-  // 默认思考步骤
+  // 如果阶段有 goal，生成默认步骤
+  if (stage.goal) {
+    return [
+      { prompt: '理解任务目标', thought: stage.goal },
+      { prompt: '分析输入内容', thought: '正在读取上下文...' },
+      { prompt: '执行 AI 推理', thought: 'AI Agent 正在思考...' },
+      { prompt: '生成输出', thought: '正在生成结构化输出...' }
+    ]
+  }
   return [
-    { prompt: '1. 理解任务目标', thought: null },
-    { prompt: '2. 分析输入内容', thought: null },
-    { prompt: '3. 执行推理', thought: null },
-    { prompt: '4. 生成输出', thought: null }
+    { prompt: '理解任务目标', thought: null },
+    { prompt: '分析输入内容', thought: null },
+    { prompt: '执行 AI 推理', thought: null },
+    { prompt: '生成输出', thought: null }
   ]
 })
 
@@ -1065,8 +1144,13 @@ function formatTime(isoString) {
 
 function formatLogTime(isoString) {
   if (!isoString) return ''
-  const date = new Date(isoString)
-  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+  try {
+    const date = new Date(isoString)
+    if (isNaN(date.getTime())) return ''
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+  } catch {
+    return ''
+  }
 }
 
 async function refreshLogs() {
@@ -1128,6 +1212,27 @@ onMounted(async () => {
     await store.fetchPipeline(props.pipelineId)
     await refreshLogs()
   }, 3000)
+  
+  // 监听 WebSocket Agent 输出
+  if (store.socket) {
+    store.socket.on('agent:output', ({ pipelineId, output }) => {
+      if (pipelineId === props.pipelineId) {
+        // 实时追加日志
+        logs.value.push({
+          timestamp: new Date().toISOString(),
+          type: 'agent_log',
+          message: output.trim()
+        })
+      }
+    })
+    
+    store.socket.on('pipeline:stage:updated', ({ pipelineId, stage }) => {
+      if (pipelineId === props.pipelineId && stage.thinking) {
+        // 更新当前阶段的思考数据
+        store.fetchPipeline(props.pipelineId)
+      }
+    })
+  }
 })
 
 watch(() => props.pipelineId, async (newId) => {

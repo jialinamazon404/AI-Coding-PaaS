@@ -1016,10 +1016,16 @@ async function runIteration(sprintId, roleIndex) {
     
     console.log(`   ✅ 执行完成，输出长度: ${rawOutput.length} 字符`);
     
-    // 解析输出
+    // 解析输出 - product 角色需要解析 JSON，其他角色直接保存
     let output = rawOutput;
     if (role === 'product') {
-      output = parseOpenCodeOutput(rawOutput);
+      const parsed = parseOpenCodeOutput(rawOutput);
+      output = parsed.text || rawOutput;
+    }
+    
+    // 确保输出不为空
+    if (!output || output.trim() === '') {
+      output = `${role} 执行完成，但未生成有效输出`;
     }
     
     // 保存输出

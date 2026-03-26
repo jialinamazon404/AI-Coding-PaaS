@@ -1,9 +1,9 @@
 {
-  "name": "auto-pipeline-cli",
+  "name": "devforge",
   "author": "jialin.chen",
   "version": "1.0.0",
   "type": "module",
-  "description": "AI Team Pipeline CLI",
+  "description": "AI Team Pipeline - Multi-Agent Development System",
   "main": "orchestrator.js",
   "scripts": {
     "dev": "./start.sh",
@@ -17,5 +17,10 @@
   "dependencies": {
     "axios": "^1.13.6",
     "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "cors": "^2.8.5"
   }
 }

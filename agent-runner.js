@@ -562,6 +562,105 @@ async function submitOutput(pipelineId, agent, output, status = 'completed') {
   });
 }
 
+// 验证 Agent 输出完整性
+async function validateAgentOutput(agentName, output, pipelineId) {
+  const text = output.text || '';
+  const issues = [];
+  
+  switch (agentName) {
+    case 'product':
+      // PRD 需要包含：用户故事、功能清单
+      const hasUserStories = /用户故事|user story|US-\d+/i.test(text);
+      const hasFeatures = /功能清单|feature|F-\d+/i.test(text);
+      const hasAcceptance = /验收标准|acceptance|acceptance criteria/i.test(text);
+      
+      if (!hasUserStories) issues.push('缺少用户故事 (userStories)');
+      if (!hasFeatures) issues.push('缺少功能清单 (features)');
+      if (!hasAcceptance) issues.push('缺少验收标准 (acceptance criteria)');
+      
+      // 检查是否只是询问问题而没有生成 PRD
+      if (/请选择|哪个|是什么\?/.test(text) && !hasFeatures) {
+        issues.push('产品经理只提出了问题，未生成 PRD');
+      }
+      break;
+      
+    case 'architect':
+      // 架构设计需要包含：技术选型、组件设计、API设计
+      const hasTechSelection = /技术选型|tech stack|方案[ABC]/i.test(text);
+      const hasComponent = /组件|component|架构图/i.test(text);
+      const hasAPI = /API|接口|endpoint/i.test(text);
+      
+      if (!hasTechSelection) issues.push('缺少技术选型');
+      if (!hasComponent) issues.push('缺少组件设计');
+      if (!hasAPI) issues.push('缺少 API 设计');
+      
+      // 检查是否需要用户选择
+      if (/请选择|A\)|B\)|C\)/.test(text) && !/用户已选择/.test(text)) {
+        issues.push('架构师等待用户选择技术方案');
+      }
+      break;
+      
+    case 'scout':
+      // 侦察报告需要包含：可行性分析、风险识别
+      const hasFeasibility = /可行|feasibility|风险|risk/i.test(text);
+      const hasRecommendations = /建议|recommendation|路线/i.test(text);
+      
+      if (!hasFeasibility) issues.push('缺少可行性分析');
+      if (!hasRecommendations) issues.push('缺少建议');
+      break;
+      
+    case 'developer':
+      // 开发需要包含：代码文件、README
+      const hasCode = /src\/|components|App\.|package\.json/i.test(text);
+      const hasReadme = /README|项目结构|快速启动/i.test(text);
+      
+      if (!hasCode) issues.push('缺少代码文件');
+      if (!hasReadme) issues.push('缺少 README 文档');
+      break;
+      
+    case 'tester':
+      // 测试报告需要包含：测试结果、bug 列表
+      const hasSummary = /passed|failed|total|测试结果/i.test(text);
+      const hasBugs = /bug|issue|问题/i.test(text);
+      
+      if (!hasSummary) issues.push('缺少测试结果摘要');
+      if (!hasBugs) issues.push('缺少 Bug 列表');
+      break;
+      
+    case 'ops':
+      // 运维配置需要包含：Dockerfile 或部署配置
+      const hasDocker = /Dockerfile|Docker|docker/i.test(text);
+      const hasDeploy = /部署|deploy|CI\/CD/i.test(text);
+      
+      if (!hasDocker && !hasDeploy) issues.push('缺少部署配置');
+      break;
+  }
+  
+  return {
+    isValid: issues.length === 0,
+    issues
+  };
+}
+
+// 处理验证失败的情况
+async function handleValidationFailure(pipelineId, agentName, issues, output) {
+  console.log(`   ⚠️ ${agentName} 输出验证失败:`);
+  issues.forEach(issue => console.log(`      - ${issue}`));
+  
+  // 标记状态为需要用户输入
+  await axios.put(`${API_BASE}/api/pipelines/${pipelineId}`, {
+    status: 'waiting_input',
+    context: {
+      waitingFor: agentName,
+      issues: issues,
+      lastOutput: output.textSummary || output.text?.slice(0, 500)
+    }
+  });
+  
+  console.log(`   ⏳ 流水线已暂停，等待修复或用户输入...`);
+  return true;
+}
+
 // 执行单个 Agent
 async function executeAgent(pipelineId, agentName) {
   const pipeline = await getPipeline(pipelineId);
@@ -611,6 +710,19 @@ async function executeAgent(pipelineId, agentName) {
     
     console.log(`   📊 Structured text length: ${(structured.textSummary || '').length}`);
     
+    // 验证输出完整性
+    const validation = await validateAgentOutput(agentName, structured, pipelineId);
+    console.log(`   🔍 验证结果: ${validation.isValid ? '通过' : '失败'}`);
+    
+    if (!validation.isValid) {
+      // 验证失败，暂停流水线
+      const shouldPause = await handleValidationFailure(pipelineId, agentName, validation.issues, structured);
+      if (shouldPause) {
+        await submitOutput(pipelineId, agentName, structured, 'needs_input');
+        return structured;
+      }
+    }
+    
     // 保存文件到 workspace
     try {
       await saveAgentFiles(pipelineId, agentName, parsed.text, structured);
@@ -620,6 +732,7 @@ async function executeAgent(pipelineId, agentName) {
       structured.saveError = e.message;
     }
     
+    structured.validation = validation;
     await submitOutput(pipelineId, agentName, structured);
     
     // 如果是架构师且有 options，需要等待选择
@@ -690,6 +803,32 @@ async function runPipeline(pipelineId) {
         }
       } catch (e) {}
       await new Promise(r => setTimeout(r, 3000));
+      continue;
+    }
+    
+    // 验证失败等待输入状态
+    if (pipeline.status === 'waiting_input') {
+      const ctx = pipeline.context || {};
+      console.log(`\n⏸️ 验证失败，流水线等待输入...`);
+      console.log(`   等待角色: ${ctx.waitingFor}`);
+      console.log(`   问题: ${(ctx.issues || []).join(', ')}`);
+      
+      // 检查是否恢复运行（用户手动修复后继续）
+      const refreshed = await getPipeline(pipelineId);
+      if (refreshed.status === 'running') {
+        console.log(`\n▶️ 检测到恢复信号，重新执行当前阶段`);
+        const currentStage = refreshed.currentStage;
+        if (currentStage) {
+          await executeAgent(pipelineId, currentStage);
+        }
+        continue;
+      }
+      if (refreshed.status === 'abandoned') {
+        console.log(`\n❌ 流水线已放弃`);
+        break;
+      }
+      
+      await new Promise(r => setTimeout(r, 5000));
       continue;
     }
     
