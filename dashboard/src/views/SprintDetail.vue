@@ -226,7 +226,7 @@
                 </div>
                 <div class="flex space-x-2">
                   <button
-                    @click="previewFile(file)"
+                    @click="openPreview(file)"
                     class="px-3 py-1.5 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 rounded text-xs transition-colors"
                   >
                     预览
@@ -832,7 +832,7 @@ function downloadFile(filePath) {
   link.click()
 }
 
-async function previewFile(file) {
+async function openPreview(file) {
   previewFile.value = file
   previewContent.value = ''
   previewError.value = ''
