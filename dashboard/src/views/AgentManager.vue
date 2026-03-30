@@ -7,20 +7,24 @@
         <p class="text-gray-400 text-sm mt-1">选择要扮演的角色，查看该角色的任务和状态</p>
       </div>
           <div class="p-6">
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="grid grid-cols-2 md:grid-cols-6 lg:grid-cols-7 gap-3">
           <button
             v-for="agent in agents"
             :key="agent.id"
             @click="selectAgent(agent)"
-            class="p-4 rounded-lg border-2 transition-all text-center"
+            class="p-3 rounded-lg border-2 transition-all text-center relative"
             :class="selectedAgent?.id === agent.id 
               ? 'border-primary-500 bg-primary-500/10' 
               : 'border-gray-700 hover:border-gray-600 bg-gray-900'"
           >
-            <div class="text-3xl mb-2">{{ agent.icon }}</div>
-            <div class="text-white font-medium">{{ agent.name }}</div>
-            <div class="text-primary-400 text-xs mt-1">⚡ {{ agent.skill }}</div>
-            <div class="text-gray-500 text-xs mt-0.5">🤖 {{ getAgentModel(agent.id) }}</div>
+            <div class="text-2xl mb-1">{{ agent.icon }}</div>
+            <div class="text-white font-medium text-sm">{{ agent.name }}</div>
+            <div v-if="agent.skills?.length > 0" class="text-primary-400 text-xs mt-1">
+              ⚡ {{ agent.skills.length }} skills
+            </div>
+            <div v-else class="text-gray-500 text-xs mt-1">
+              ⚡ 核心角色
+            </div>
           </button>
         </div>
       </div>
@@ -77,22 +81,39 @@
             </div>
           </div>
 
-          <div v-if="selectedAgent.skill" class="border-t border-gray-700 pt-4">
-            <h3 class="text-gray-400 text-sm mb-2">使用的 Skill</h3>
-            <div class="bg-gradient-to-r from-primary-500/20 to-secondary-500/20 rounded-lg p-4 border border-primary-500/30">
-              <div class="flex items-center justify-between">
+          <div v-if="selectedAgent.skills?.length > 0" class="border-t border-gray-700 pt-4">
+            <h3 class="text-gray-400 text-sm mb-2">使用的 Skills ({{ selectedAgent.skills.length }})</h3>
+            <div class="space-y-2">
+              <div 
+                v-for="skill in selectedAgent.skills" 
+                :key="skill.name"
+                class="bg-gradient-to-r from-primary-500/10 to-secondary-500/10 rounded-lg p-3 border border-primary-500/20 hover:border-primary-500/40 transition-colors"
+              >
                 <div class="flex items-center space-x-3">
-                  <span class="text-2xl">⚡</span>
+                  <span class="text-lg">⚡</span>
                   <div>
-                    <div class="text-white font-medium">{{ selectedAgent.skill }}</div>
-                    <div class="text-gray-400 text-sm mt-1">{{ selectedAgent.skillDescription }}</div>
+                    <div class="text-white font-medium">{{ skill.name }}</div>
+                    <div class="text-gray-400 text-xs mt-0.5">{{ skill.description }}</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
-          <div class="border-t border-gray-700 pt-4">
+          <div v-else-if="selectedAgent.id === 'gatekeeper'" class="border-t border-gray-700 pt-4">
+            <h3 class="text-gray-400 text-sm mb-2">角色说明</h3>
+            <div class="bg-gradient-to-r from-gray-500/10 to-gray-600/10 rounded-lg p-3 border border-gray-500/20">
+              <div class="text-gray-300 text-sm">
+                守门人是系统的核心调度角色，负责：
+              </div>
+              <ul class="mt-2 text-gray-400 text-sm space-y-1">
+                <li>• 解析用户请求</li>
+                <li>• 路由决策（CRITICAL/BUILD/REVIEW/QUERY/SECURITY）</li>
+                <li>• 派发任务给下游 Agent</li>
+                <li>• 维护中央状态机</li>
+              </ul>
+            </div>
+          </div>
+          <div v-if="selectedAgent.id !== 'gatekeeper'" class="border-t border-gray-700 pt-4">
             <h3 class="text-gray-400 text-sm mb-2">AI 模型</h3>
             <div class="flex items-center space-x-3">
               <select
@@ -221,6 +242,17 @@ const selectedAgent = ref(null)
 
 const agents = [
   {
+    id: 'gatekeeper',
+    name: '守门人',
+    role: 'Gatekeeper',
+    icon: '🚪',
+    description: '路由决策，维护中央状态机，解析请求，派发任务给下游 Agent',
+    triggers: ['用户发起请求'],
+    tools: ['文件读取', '文件写入', '状态管理'],
+    route: ['gatekeeper'],
+    skills: []
+  },
+  {
     id: 'ba',
     name: 'BA',
     role: 'Business Analyst',
@@ -229,104 +261,140 @@ const agents = [
     triggers: ['用户发起请求'],
     tools: ['文件写入', '需求分析'],
     route: ['ba'],
-    skill: 'brainstorming',
-    skillDescription: '业务分析、需求梳理、流程优化'
+    skills: [
+      { name: 'brainstorming', description: '业务分析、需求梳理、流程优化' }
+    ]
   },
   {
     id: 'product',
     name: '产品',
     role: 'Product Manager',
     icon: '📋',
-    description: '产品规划，功能定义，用户体验设计',
-    triggers: ['BA完成后'],
-    tools: ['文件写入', 'PRD编写'],
+    description: '产品规划，功能定义，用户体验设计，生成 PRD 和用户故事',
+    triggers: ['BA完成后', '新产品立项', '原型设计', '体验优化'],
+    tools: ['文件写入', 'PRD编写', '用户故事'],
     route: ['product'],
-    skill: 'brainstorming',
-    skillDescription: 'PRD文档生成、产品规划、用户体验'
+    skills: [
+      { name: 'user-story', description: '用户故事拆分（As a... I want... So that...）' },
+      { name: 'product-spec-kit', description: '产品规格文档生成' },
+      { name: 'ui-ux-designer', description: '界面布局建议、交互流程设计' },
+      { name: 'tailwind-design-system', description: '设计系统构建、组件规范' },
+      { name: 'user-journeys', description: '用户旅程映射、体验优化' },
+      { name: 'brainstorming', description: '产品思维、需求深化' }
+    ]
   },
   {
     id: 'architect',
     name: '架构师',
     role: 'Architect',
     icon: '🏗️',
-    description: '系统设计，生成 OpenSpec 文档，API 定义',
+    description: '系统设计，生成 OpenSpec 文档，API 定义，数据模型设计',
     triggers: ['产品完成后'],
-    tools: ['文件写入', '代码搜索'],
+    tools: ['文件写入', '代码搜索', 'OpenSpec生成'],
     route: ['architect'],
-    skill: 'plan-eng-review',
-    skillDescription: '架构评审、API设计、技术选型'
+    skills: [
+      { name: 'OpenSpec', description: '生成架构设计文档（组件划分、API设计、数据模型、技术选型）' },
+      { name: 'system-design', description: '系统架构设计原则、组件划分' },
+      { name: 'plan-eng-review', description: '架构评审、技术选型决策' }
+    ]
+  },
+  {
+    id: 'scout',
+    name: '侦察兵',
+    role: 'Scout',
+    icon: '🔍',
+    description: '技术可行性验证，探索代码库，识别风险和机会，基于 OpenSpec 进行分析',
+    triggers: ['BUILD模式'],
+    tools: ['代码搜索', '文件探索', '依赖分析', 'OpenSpec验证'],
+    route: ['scout'],
+    skills: [
+      { name: 'OpenSpec验证', description: '验证 OpenSpec 可行性，分析技术边界和依赖' },
+      { name: '代码探索', description: '探索现有代码库结构，分析相似实现' },
+      { name: '风险识别', description: '识别技术风险、依赖问题、性能瓶颈' }
+    ]
   },
   {
     id: 'developer',
     name: '开发者',
     role: 'Developer',
     icon: '💻',
-    description: '源代码产出，测试代码编写，Git 操作',
+    description: '源代码产出，测试代码编写，Git 操作，PR 创建',
     triggers: ['架构设计后'],
-    tools: ['文件编辑', 'Git', 'Shell'],
+    tools: ['文件编辑', '文件写入', 'Git', 'Shell'],
     route: ['developer'],
-    skill: 'test-driven-development',
-    skillDescription: 'TDD开发、代码实现、测试编写'
+    skills: [
+      { name: 'api-design', description: 'RESTful API 设计原则' },
+      { name: 'event-driven', description: '事件驱动架构模式' },
+      { name: 'test-driven-development', description: 'TDD 开发（RED-GREEN-REFACTOR）' }
+    ]
   },
   {
     id: 'tester',
     name: 'QA',
     role: 'QA Engineer',
     icon: '🧪',
-    description: '集成测试，bug报告生成，测试覆盖率分析',
+    description: '集成测试，bug 报告生成，测试覆盖率分析，性能测试',
     triggers: ['开发完成后'],
-    tools: ['gstack', 'browse', 'qa', 'canary'],
+    tools: ['gstack/browse', 'gstack/qa', 'gstack/canary', 'gstack/benchmark'],
     route: ['tester'],
-    skill: 'qa',
-    skillDescription: 'QA测试、bug报告、自动化测试'
+    skills: [
+      { name: 'gstack/qa', description: '完整 QA 测试循环（测试→修复→验证）' },
+      { name: 'gstack/browse', description: '页面交互测试（导航、表单、按钮验证）' },
+      { name: 'gstack/canary', description: '部署后健康检查' },
+      { name: 'gstack/benchmark', description: '性能回归测试（LCP、FID、CLS）' }
+    ]
   },
   {
     id: 'ops',
-    name: 'SRE',
-    role: 'Site Reliability Engineer',
-    icon: '🚀',
-    description: '基础设施配置，部署脚本，CI/CD流水线',
-    triggers: ['QA通过后'],
-    tools: ['Docker', 'Shell', 'CI配置'],
+    name: '运维',
+    role: 'DevOps',
+    icon: '⚙️',
+    description: '基础设施配置，部署脚本，CI/CD 流水线，环境变量管理',
+    triggers: ['QA通过后', 'BUILD模式'],
+    tools: ['Docker', 'Shell', 'CI配置', '部署脚本'],
     route: ['ops'],
-    skill: 'ship',
-    skillDescription: '部署配置、Docker Compose、CI/CD'
-  },
-  {
-    id: 'evolver',
-    name: '进化顾问',
-    role: 'Evolver',
-    icon: '🔄',
-    description: '代码重构，技术债务清理，性能优化',
-    triggers: ['需要优化时'],
-    tools: ['重构', '性能分析', '代码审查'],
-    route: ['evolver'],
-    skill: 'retro',
-    skillDescription: '代码重构、性能优化、技术债务清理'
+    skills: [
+      { name: 'ship', description: 'Docker 配置、CI/CD 流水线、部署脚本' }
+    ]
   },
   {
     id: 'ghost',
     name: '幽灵',
     role: 'Security Ghost',
     icon: '👻',
-    description: '静默监控，安全扫描，漏洞审计',
-    triggers: ['REVIEW', 'SECURITY'],
-    tools: ['日志分析', '安全扫描'],
+    description: '安全审计，日志分析，识别潜在风险（只读，不修改）',
+    triggers: ['REVIEW模式', 'SECURITY模式'],
+    tools: ['日志分析', '安全扫描', '合规检查'],
     route: ['ghost'],
-    skill: 'cso',
-    skillDescription: '安全审计、漏洞扫描、合规检查'
+    skills: [
+      { name: 'cso', description: '安全审计、敏感信息扫描、OWASP 检查' }
+    ]
   },
   {
     id: 'creative',
     name: '创意',
     role: 'Creative Director',
     icon: '🎨',
-    description: 'UI/UX评审，设计一致性检查，体验优化',
-    triggers: ['REVIEW', 'CRITICAL'],
-    tools: ['截图', '设计评审'],
+    description: 'UI/UX 评审，设计一致性检查，体验优化建议',
+    triggers: ['REVIEW模式', 'CRITICAL模式'],
+    tools: ['截图', '设计评审', '用户体验分析'],
     route: ['creative'],
-    skill: 'design-review',
-    skillDescription: 'UI/UX评审、设计一致性、视觉审计'
+    skills: [
+      { name: 'design-review', description: 'UI/UX 评审、设计一致性、视觉审计' }
+    ]
+  },
+  {
+    id: 'evolver',
+    name: '进化顾问',
+    role: 'Evolver',
+    icon: '🔮',
+    description: '代码重构，技术债务清理，性能优化，未来规划建议',
+    triggers: ['任务完成后', '需要优化时'],
+    tools: ['重构', '性能分析', '代码审查'],
+    route: ['evolver'],
+    skills: [
+      { name: 'retro', description: '代码重构、技术债务清理、性能优化' }
+    ]
   }
 ]
 
