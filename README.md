@@ -310,9 +310,9 @@ database:
 
 | 场景 | Skills 工作流 | 说明 |
 |------|-------------|------|
-| **日常功能开发** | code → refactor → TDD → document | 涉及接口必用 api-design |
-| **复杂 bug 排查** | systematic-debugging → bug-hunter → log-analyzer → code | 系统调试方法 |
-| **技术栈专项开发** | frontend-builder → unit-test-generator → dependency-checker | 接口必用 api-design |
+| **日常功能开发** | code → TDD(含refactor) → document | 涉及接口必用 api-design，TDD 包含 refactor 环节 |
+| **复杂 bug 排查** | systematic-debugging → log-analyzer → code | 使用 systematic-debugging + log-analyzer（替代 bug-hunter） |
+| **技术栈专项开发** | 原生脚手架 → unit-test-generator → dependency-checker | 前端使用 vue-cli/create-react-app（替代 frontend-builder） |
 
 > **模型配置**: 可在 Dashboard 界面中点击角色卡片切换模型，配置保存到 LocalStorage
 

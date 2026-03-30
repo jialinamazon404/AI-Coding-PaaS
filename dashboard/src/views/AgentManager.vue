@@ -408,8 +408,7 @@ const agents = [
         name: '日常功能开发',
         skills: [
           { name: 'code', description: '代码编写' },
-          { name: 'refactor', description: '代码重构优化' },
-          { name: 'test-driven-development', description: 'TDD 测试驱动开发' },
+          { name: 'TDD(含refactor)', description: '测试驱动开发，含重构环节' },
           { name: 'document', description: '文档编写' },
           { name: 'api-design', description: '【接口必用】RESTful API 设计' }
         ]
@@ -419,8 +418,7 @@ const agents = [
         name: '复杂 bug 排查',
         skills: [
           { name: 'systematic-debugging', description: '系统调试、根因分析' },
-          { name: 'bug-hunter', description: 'Bug 追踪定位' },
-          { name: 'log-analyzer', description: '日志分析' },
+          { name: 'log-analyzer', description: '日志分析（替代 bug-hunter）' },
           { name: 'code', description: '代码修复' }
         ]
       },
@@ -428,7 +426,7 @@ const agents = [
         id: 'specialized-dev',
         name: '技术栈专项开发',
         skills: [
-          { name: 'frontend-builder', description: '前端构建' },
+          { name: '原生脚手架', description: 'vue-cli/create-react-app 等（替代 frontend-builder）' },
           { name: 'unit-test-generator', description: '单元测试生成' },
           { name: 'dependency-checker', description: '依赖检查（npm audit）' },
           { name: 'api-design', description: '【接口必用】RESTful API 设计' },

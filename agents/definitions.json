@@ -187,23 +187,23 @@
       "scenarios": {
         "日常功能开发": {
           "description": "日常功能开发，包含代码编写、重构优化、测试、文档",
-          "skills": ["code", "refactor", "test-driven-development", "document"],
-          "workflow": ["code", "refactor", "test", "document"],
-          "notes": "涉及接口时使用 api-design，必要时使用 event-driven",
+          "skills": ["code", "test-driven-development", "document"],
+          "workflow": ["code", "TDD(refactor)", "test", "document"],
+          "notes": "涉及接口时使用 api-design，必要时使用 event-driven，TDD 包含 refactor 环节",
           "output": "功能代码、测试用例、API 文档"
         },
         "复杂 bug 排查": {
-          "description": "复杂 bug 排查修复，包含系统调试、Bug 追踪、日志分析、代码修复",
-          "skills": ["systematic-debugging", "bug-hunter", "log-analyzer", "code"],
-          "workflow": ["debug", "bug-hunter", "log-analyzer", "code"],
-          "notes": "使用 systematic-debugging 进行根因分析",
+          "description": "复杂 bug 排查修复，包含系统调试、日志分析、代码修复",
+          "skills": ["systematic-debugging", "log-analyzer", "code"],
+          "workflow": ["systematic-debugging", "log-analyzer", "code"],
+          "notes": "使用 systematic-debugging 进行根因分析，log-analyzer 分析日志",
           "output": "Bug 修复、问题分析报告"
         },
         "技术栈专项开发": {
           "description": "针对特定技术栈的专项开发",
-          "skills": ["frontend-builder", "unit-test-generator", "dependency-checker", "api-design"],
-          "workflow": ["frontend-builder", "unit-test-generator", "dependency-checker"],
-          "notes": "前端使用 frontend-builder，后端涉及接口使用 api-design",
+          "skills": ["unit-test-generator", "dependency-checker", "api-design"],
+          "workflow": ["原生脚手架", "unit-test-generator", "dependency-checker"],
+          "notes": "前端使用原生脚手架(vue-cli/create-react-app)，后端涉及接口使用 api-design",
           "output": "前端/后端代码、单元测试、依赖报告"
         }
       },
