@@ -111,24 +111,49 @@
 
 | 角色 | 图标 | 目标 | 输入 | 输出 | 模型 | Skill |
 |------|------|------|------|------|------|-------|
+| **Gatekeeper** | 🚪 | 路由决策 | 原始请求 | 路由决策 + Pipeline 配置 | `big-pickle` | - |
 | **BA** | 📝 | 业务分析 | 用户原始需求 | 业务分析报告 | `big-pickle` | brainstorming |
 | **Product** | 📋 | 需求分析 | 业务分析 | PRD (JSON) | `big-pickle` | brainstorming |
 | **Architect** | 🏗️ | 架构设计 | PRD | OpenSpec (YAML) | `big-pickle` | plan-eng-review |
+| **Scout** | 🔍 | 技术可行性验证 | OpenSpec | 风险评估报告 | `big-pickle` | - |
 | **Developer** | 💻 | 代码实现 | PRD + OpenSpec | 前端/后端代码 + README + API.md | `big-pickle` | test-driven-development |
 | **Tester** | 🧪 | 功能+安全测试 | 代码路径 | test-report.md + security-report.md | `big-pickle` | gstack/qa |
-| **SRE** | 🚀 | 部署配置 | Developer 输出 | Dockerfile/部署配置 | `gpt-5-nano` | ship |
+| **Ops** | ⚙️ | 部署配置 | Developer 输出 | Dockerfile/部署配置 | `gpt-5-nano` | ship |
 | **Evolver** | 🔄 | 重构优化 | 现有代码 | 重构建议报告 | `gpt-5-nano` | retro |
 | **Ghost** | 👻 | 安全审计 | 全部输出 | 安全报告 | `big-pickle` | cso |
 | **Creative** | 🎨 | 设计评审 | 全部输出 | 评审意见 | `big-pickle` | design-review |
+
+### 决策路由（5 种模式）
+
+| 路由 | 执行顺序 |
+|------|----------|
+| **CRITICAL** | product → architect → creative → developer → tester → evolver |
+| **BUILD** | product → architect → scout → developer → tester → ops → evolver |
+| **REVIEW** | creative → ghost → tester |
+| **QUERY** | scout |
+| **SECURITY** | ghost → architect |
 
 ### 条件触发角色
 
 | 角色 | 图标 | 触发条件 | Skill |
 |------|------|----------|-------|
+| **Scout** | 🔍 | BUILD 模式 | - |
 | **Ghost** | 👻 | REVIEW / SECURITY | cso - 安全审计 |
 | **Creative** | 🎨 | REVIEW / CRITICAL | design-review - UI/UX 评审 |
 
 ### 角色详细说明
+
+#### 🚪 Gatekeeper (守门人)
+- **目标**: 维护中央状态机，解析请求，路由决策，派发任务给下游 Agent
+- **输入**: 原始用户请求
+- **输出**: 路由决策 (CRITICAL/BUILD/REVIEW/QUERY/SECURITY) + Pipeline 配置
+- **模型**: `big-pickle`
+
+#### 📝 BA (业务分析师)
+- **目标**: 业务分析，提取核心需求
+- **输入**: 用户原始需求
+- **输出**: 业务分析报告
+- **Skill**: brainstorming
 
 #### 📋 Product (产品经理)
 - **目标**: 理解需求，生成完整的 PRD 文档
