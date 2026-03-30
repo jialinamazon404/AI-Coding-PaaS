@@ -11,6 +11,23 @@
         <div>
           <div class="flex items-center space-x-3">
             <h1 class="text-xl font-semibold text-white">{{ sprint.name }}</h1>
+            <div class="flex items-center space-x-1">
+              <span class="px-2 py-0.5 bg-vue-darker rounded text-xs text-gray-400 font-mono">
+                {{ sprint.id.slice(0, 8) }}
+              </span>
+              <button
+                @click="copySprintId"
+                class="p-1.5 text-gray-400 hover:text-vue-primary transition-colors"
+                title="复制完整 ID"
+              >
+                <svg v-if="!showCopySuccess" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <svg v-else class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+            </div>
             <span :class="sprintStatusClass(sprint.status)" class="px-2 py-0.5 rounded text-xs">
               {{ sprintStatusText(sprint.status) }}
             </span>
@@ -100,7 +117,7 @@
           
           <!-- Product 角色：直接显示冲刺需求 -->
           <div v-if="isProductRole && sprint?.rawInput" class="space-y-3">
-            <div class="text-white bg-vue-card rounded-vue p-3">
+            <div class="text-white bg-vue-card rounded-vue p-3 max-h-[300px] overflow-auto">
               {{ sprint.rawInput }}
             </div>
             <div class="flex justify-end">
@@ -119,7 +136,7 @@
             <textarea
               v-model="userInput"
               rows="4"
-              class="w-full bg-vue-darker border border-vue-border rounded-vue px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-vue-primary"
+              class="w-full bg-vue-darker border border-vue-border rounded-vue px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-vue-primary resize-y min-h-[100px] max-h-[300px] overflow-auto"
               :placeholder="getInputPlaceholder()"
             ></textarea>
             <div class="flex justify-between">
@@ -144,8 +161,8 @@
             </div>
           </div>
           
-          <div v-else-if="currentIteration?.userInput" class="text-white">
-            {{ currentIteration.userInput }}
+          <div v-else-if="currentIteration?.userInput" class="text-white max-h-[300px] overflow-auto bg-vue-darker rounded-vue p-3">
+            <pre class="text-sm whitespace-pre-wrap font-mono">{{ formatAsJson(currentIteration.userInput) }}</pre>
           </div>
           <div v-else class="text-gray-500 italic">
             等待用户输入...
@@ -192,7 +209,7 @@
           
           <!-- 其他角色：显示完整输出 -->
           <div v-else-if="currentIteration?.output || currentIteration?.status === 'running'" class="space-y-4">
-            <pre class="text-gray-300 text-sm whitespace-pre-wrap overflow-auto max-h-96">{{ currentIteration.output }}</pre>
+            <pre class="text-gray-300 text-sm whitespace-pre-wrap overflow-auto max-h-96 bg-vue-darker rounded-vue p-4 border border-vue-border">{{ formatOutput(currentIteration.output) }}</pre>
             
             <!-- 确认/重新执行按钮 -->
             <div v-if="canConfirm" class="flex justify-end space-x-3 pt-4 border-t border-vue-border">
@@ -210,13 +227,19 @@
               </button>
             </div>
             <div v-else-if="currentIteration?.status === 'running'" class="text-center py-4">
-              <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+              <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-3"></div>
               <p class="text-gray-400">Agent 正在执行...</p>
+              <div v-if="progressLog" class="mt-3 text-vue-primary text-sm animate-pulse">
+                {{ progressLog }}
+              </div>
             </div>
           </div>
           <div v-else-if="currentIteration?.status === 'running'" class="text-center py-4">
-            <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+            <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-3"></div>
             <p class="text-gray-400">Agent 正在执行...</p>
+            <div v-if="progressLog" class="mt-3 text-vue-primary text-sm animate-pulse">
+              {{ progressLog }}
+            </div>
           </div>
           <div v-else class="text-gray-500 italic">
             等待执行...
@@ -301,6 +324,8 @@ const selectedIterationIndex = ref(null)
 const userInput = ref('')
 const confirmModify = ref(false)
 const showCancelConfirm = ref(false)
+const showCopySuccess = ref(false)
+const progressLog = ref('')
 
 const currentIteration = computed(() => {
   if (selectedIterationIndex.value === null) return null
@@ -397,6 +422,11 @@ function setupSocketListeners() {
   store.socket.on('agent:output', ({ sprintId }) => {
     if (sprintId === props.sprintId) store.fetchSprint(props.sprintId)
   })
+  
+  // 监听实时进度
+  store.socket.on('agent:progress', ({ message }) => {
+    progressLog.value = message
+  })
 }
 
 watch(() => props.sprintId, (newId) => {
@@ -465,9 +495,11 @@ async function submitUserInput() {
 
 async function confirmOutput() {
   const currentIndex = selectedIterationIndex.value
+  const currentOutput = sprint.value?.iterations[currentIndex]?.output || ''
   
   try {
-    const result = await store.confirmIteration(props.sprintId, currentIndex)
+    // 传递当前输出以实现双向同步
+    const result = await store.confirmIteration(props.sprintId, currentIndex, currentOutput)
     if (!result) {
       alert('确认失败，请重试')
       return
@@ -508,6 +540,28 @@ async function cancelSprint() {
   await store.updateSprint(props.sprintId, { status: 'cancelled' })
   showCancelConfirm.value = false
   emit('back')
+}
+
+async function copySprintId() {
+  const text = sprint.value?.id || ''
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    showCopySuccess.value = true
+    setTimeout(() => { showCopySuccess.value = false }, 2000)
+  } catch (e) {
+    console.error('复制失败:', e)
+  }
 }
 
 function getIterationClass(index, iteration) {
@@ -560,6 +614,34 @@ function getIterationStatusText(status) {
     failed: '失败'
   }
   return texts[status] || status
+}
+
+function formatOutput(output) {
+  if (!output) return ''
+  // 直接返回，不做过滤，让后端处理
+  return output
+}
+
+function formatAsJson(input) {
+  if (!input) return ''
+  
+  // 尝试直接解析整个输入
+  try {
+    const parsed = JSON.parse(input)
+    return JSON.stringify(parsed, null, 2)
+  } catch {}
+  
+  // 尝试提取 JSON 代码块
+  const jsonBlockMatch = input.match(/```json\n?([\s\S]*?)```/i)
+  if (jsonBlockMatch) {
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1])
+      return JSON.stringify(parsed, null, 2)
+    } catch {}
+  }
+  
+  // 如果都不是，返回原始文本
+  return input
 }
 
 function sprintStatusClass(status) {

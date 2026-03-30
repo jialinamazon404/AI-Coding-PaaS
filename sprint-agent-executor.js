@@ -16,6 +16,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import axios from 'axios';
+import { io } from 'socket.io-client';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = __dirname;
@@ -24,47 +25,76 @@ const WORKSPACE = path.join(ROOT, 'workspace');
 // 从命令行参数获取 API_BASE，或使用默认值
 const API_BASE = process.argv.find(arg => arg.startsWith('API_BASE='))?.split('=')[1] || 'http://localhost:3000';
 
+// Socket.IO 客户端连接
+let socket = null;
+
+function initSocket() {
+  if (!socket) {
+    socket = io(API_BASE.replace('http://', 'ws://'), {
+      path: '/socket.io',
+      transports: ['websocket']
+    });
+    socket.on('connect', () => {
+      console.log('   🔌 WebSocket 已连接');
+    });
+  }
+  return socket;
+}
+
+function sendProgress(message) {
+  if (socket && socket.connected) {
+    socket.emit('agent:progress', { message });
+  }
+}
+
 // Skill 路径映射
 const SKILL_PATHS = {
   brainstorming: '/Users/jialin.chen/.cache/opencode/node_modules/superpowers/skills/brainstorming/SKILL.md',
   'plan-eng-review': '/Users/jialin.chen/.claude/skills/gstack/plan-eng-review/SKILL.md',
+  'office-hours': '/Users/jialin.chen/.claude/skills/gstack/office-hours/SKILL.md',
   qa: '/Users/jialin.chen/.claude/skills/gstack/qa/SKILL.md',
   'test-driven-development': '/Users/jialin.chen/.cache/opencode/node_modules/superpowers/skills/test-driven-development/SKILL.md',
   ship: '/Users/jialin.chen/.claude/skills/gstack/ship/SKILL.md',
-  cso: '/Users/jialin.chen/.claude/skills/gstack/cso/SKILL.md'
+  cso: '/Users/jialin.chen/.claude/skills/gstack/cso/SKILL.md',
+  'design-review': '/Users/jialin.chen/.claude/skills/gstack/design-review/SKILL.md',
+  retro: '/Users/jialin.chen/.claude/skills/gstack/retro/SKILL.md'
 };
 
 // 角色与 Skill 映射
 const ROLE_SKILLS = {
+  ba: 'brainstorming',
   product: 'brainstorming',
   architect: 'plan-eng-review',
-  tester: 'qa',
   developer: 'test-driven-development',
+  tester: 'qa',
   ops: 'ship',
-  ghost: 'cso'
+  evolver: 'retro',
+  ghost: 'cso',
+  creative: 'design-review'
 };
 
 // Agent 模型配置 - 使用实际可用的模型
 const AGENT_MODELS = {
+  ba: 'opencode/big-pickle',
   product: 'opencode/big-pickle',
   architect: 'opencode/big-pickle',
   developer: 'opencode/big-pickle',
   tester: 'opencode/big-pickle',
-  scout: 'opencode/gpt-5-nano',
   ops: 'opencode/gpt-5-nano',
-  ghost: 'opencode/gpt-5-nano',
-  creative: 'opencode/big-pickle',
-  evolver: 'opencode/gpt-5-nano'
+  evolver: 'opencode/gpt-5-nano',
+  ghost: 'opencode/big-pickle',
+  creative: 'opencode/big-pickle'
 };
 
 // 超时配置 (毫秒)
 const TIMEOUT_CONFIG = {
-  product: 120000,      // 2分钟
-  architect: 120000,   // 2分钟
-  developer: 600000,    // 10分钟（代码实现更复杂）
-  tester: 180000,
-  scout: 90000,
-  ops: 90000
+  ba: 300000,         // 5分钟
+  product: 300000,    // 5分钟
+  architect: 300000, // 5分钟
+  developer: 600000,  // 10分钟
+  tester: 300000,     // 5分钟
+  ops: 300000,        // 5分钟
+  evolver: 300000     // 5分钟
 };
 
 // 最大重试次数
@@ -72,15 +102,15 @@ const MAX_RETRIES = 2;
 
 // 角色图标和名称
 const ROLE_INFO = {
-  product: { icon: '📋', name: '产品经理', name_en: 'Product Manager' },
+  ba: { icon: '📊', name: 'BA', name_en: 'Business Analyst' },
+  product: { icon: '📋', name: '产品', name_en: 'Product Manager' },
   architect: { icon: '🏗️', name: '架构师', name_en: 'Architect' },
-  scout: { icon: '🔍', name: '侦察兵', name_en: 'Scout' },
   developer: { icon: '💻', name: '开发者', name_en: 'Developer' },
-  tester: { icon: '🧪', name: '测试工程师', name_en: 'Tester' },
-  ops: { icon: '⚙️', name: '运维工程师', name_en: 'DevOps' },
-  ghost: { icon: '👻', name: '安全幽灵', name_en: 'Security Ghost' },
-  creative: { icon: '🎨', name: '创意总监', name_en: 'Creative Director' },
-  evolver: { icon: '🔄', name: '进化顾问', name_en: 'Evolver' }
+  tester: { icon: '🧪', name: 'QA', name_en: 'QA Engineer' },
+  ops: { icon: '🚀', name: 'SRE', name_en: 'Site Reliability Engineer' },
+  evolver: { icon: '🔄', name: '进化顾问', name_en: 'Evolver' },
+  ghost: { icon: '👻', name: '幽灵', name_en: 'Security Ghost' },
+  creative: { icon: '🎨', name: '创意', name_en: 'Creative Director' }
 };
 
 /**
@@ -127,7 +157,7 @@ async function saveThinking(pipelineId, role, thinking) {
  * 获取阶段索引
  */
 function getStageIndex(role) {
-  const order = ['product', 'architect', 'scout', 'developer', 'tester', 'ops', 'ghost', 'creative', 'evolver'];
+  const order = ['ba', 'product', 'architect', 'developer', 'tester', 'ops', 'evolver', 'ghost', 'creative'];
   return order.indexOf(role);
 }
 
@@ -140,15 +170,15 @@ async function saveOutput(pipelineId, role, output) {
   
   let fileName;
   switch (role) {
+    case 'ba': fileName = 'ba-analysis.md'; break;
     case 'product': fileName = 'prd.md'; break;
     case 'architect': fileName = 'openspec.md'; break;
-    case 'scout': fileName = 'scout-report.md'; break;
     case 'developer': fileName = 'dev-summary.md'; break;
     case 'tester': fileName = 'test-report.md'; break;
     case 'ops': fileName = 'ops-config.md'; break;
+    case 'evolver': fileName = 'evolver-report.md'; break;
     case 'ghost': fileName = 'security-report.md'; break;
     case 'creative': fileName = 'design-review.md'; break;
-    case 'evolver': fileName = 'evolver-report.md'; break;
     default: fileName = `${role}-output.md`;
   }
   
@@ -156,7 +186,22 @@ async function saveOutput(pipelineId, role, output) {
   const content = typeof output === 'string' ? output : JSON.stringify(output, null, 2);
   await fs.writeFile(filePath, content, 'utf-8');
   console.log(`   📄 输出已保存: ${fileName}`);
+  sendProgress(`输出已保存到: ${fileName}`);
   return filePath;
+}
+
+/**
+ * 清理僵尸 opencode 进程（状态为 T 的已停止进程）
+ * 防止之前超时被 kill 的进程影响新任务
+ */
+function cleanupZombieProcesses() {
+  try {
+    const { execSync } = require('child_process');
+    // 只清理状态为 T (stopped) 的僵尸进程，不影响正常运行的进程
+    execSync("pkill -f 'opencode run' -t T 2>/dev/null", { stdio: 'ignore' });
+  } catch (e) {
+    // 忽略错误（可能没有僵尸进程）
+  }
 }
 
 /**
@@ -164,6 +209,9 @@ async function saveOutput(pipelineId, role, output) {
  */
 async function runOpenCode(prompt, options = {}) {
   const { model = 'opencode/big-pickle', agentName = 'developer', retryCount = 0 } = options;
+  
+  // 清理僵尸进程
+  cleanupZombieProcesses();
   
   // 获取对应角色的超时配置
   const timeout = TIMEOUT_CONFIG[agentName] || 180000;
@@ -177,6 +225,7 @@ async function runOpenCode(prompt, options = {}) {
       const cmd = `opencode run --format json --model "${model}" --dir "${ROOT}"`;
       
       console.log(`   🚀 启动 OpenCode: ${model}`);
+      sendProgress(`正在调用 AI 模型: ${model}...`);
       
       const proc = spawn('bash', ['-c', `${cmd} < "${tmpFile}"`], {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -249,28 +298,21 @@ async function runOpenCode(prompt, options = {}) {
 
 /**
  * 解析 OpenCode 输出
+ * 只提取纯文本内容，过滤掉 JSON 事件结构
  */
 function parseOpenCodeOutput(rawOutput) {
   const lines = rawOutput.split('\n').filter(l => l.trim());
-  const events = [];
   const texts = [];
   
   for (const line of lines) {
     try {
       const event = JSON.parse(line);
-      events.push(event);
       
-      // 提取文本内容
-      let content = null;
-      if (event.part?.text) content = event.part.text;
-      else if (event.part?.content) content = event.part.content;
-      else if (event.message?.content) content = event.message.content;
-      else if (event.content) content = event.content;
-      else if (event.text) content = event.text;
-      
-      if (content) {
-        texts.push(typeof content === 'string' ? content : JSON.stringify(content));
+      // 只提取纯文本响应，跳过 OpenCode 内部事件结构
+      if (event.type === 'text' && event.part?.text) {
+        texts.push(event.part.text);
       }
+      // 跳过 tool_use, step_start, step_finish 等事件
     } catch (e) {
       // 非 JSON 行当作文本处理
       if (line.trim()) {
@@ -280,9 +322,7 @@ function parseOpenCodeOutput(rawOutput) {
   }
   
   return {
-    events,
-    text: texts.join('\n\n'),
-    toolCalls: events.filter(e => e.type === 'tool_use')
+    text: texts.join('\n\n')
   };
 }
 
@@ -772,20 +812,27 @@ async function executeAgent(pipelineId, agentName, context = {}) {
   const info = ROLE_INFO[agentName] || { icon: '🤖', name: agentName };
   const skill = ROLE_SKILLS[agentName];
   
+  // 初始化 Socket 连接
+  initSocket();
+  
   console.log(`\n${'='.repeat(60)}`);
   console.log(`${info.icon} ${info.name} (${info.name_en})`);
   console.log(`${'='.repeat(60)}`);
+  sendProgress(`开始执行 ${info.name}...`);
   
   // 更新阶段状态为运行中
+  sendProgress('正在初始化...');
   await axios.put(`${API_BASE}/api/pipelines/${pipelineId}/stage/${agentName}`, {
     status: 'running',
     startedAt: new Date().toISOString()
   }).catch(() => {});
   
   try {
+    sendProgress('正在生成任务提示...');
     // 生成提示词
     let prompt;
     switch (agentName) {
+      case 'ba':
       case 'product':
         prompt = generateProductPrompt({
           pipelineId,
@@ -799,13 +846,6 @@ async function executeAgent(pipelineId, agentName, context = {}) {
           rawInput: context.rawInput || context.request?.rawInput || '',
           workspacePath: `workspace/${pipelineId}`,
           prd: context.prd
-        });
-        break;
-      case 'scout':
-        prompt = generateScoutPrompt({
-          pipelineId,
-          rawInput: context.rawInput || context.request?.rawInput || '',
-          workspacePath: `workspace/${pipelineId}`
         });
         break;
       case 'developer':
@@ -862,6 +902,7 @@ async function executeAgent(pipelineId, agentName, context = {}) {
     
     const parsed = parseOpenCodeOutput(rawOutput);
     console.log(`   📊 输出长度: ${parsed.text.length} 字符`);
+    sendProgress(`AI 响应已接收，正在处理输出...`);
     
     // 保存思考过程
     const thinking = {
@@ -1056,9 +1097,12 @@ async function runIteration(sprintId, roleIndex) {
   });
   
   try {
-    // 执行 OpenCode
+    // 执行 OpenCode - 优先使用传入的模型，否则使用环境变量，最后用默认
+    const model = customModel || process.env.AGENT_MODEL || AGENT_MODELS[role] || 'opencode/big-pickle';
+    console.log(`   🎯 使用模型: ${model}`);
+    
     const rawOutput = await runOpenCode(prompt, {
-      model: 'opencode/big-pickle',
+      model: model,
       agentName: role
     });
     
@@ -1100,12 +1144,13 @@ async function main() {
   const args = process.argv.slice(2);
   const sprintId = args[0];
   const roleIndex = args[1] ? parseInt(args[1]) : null;
+  const customModel = args[2]; // 可选的模型参数
   
   if (!sprintId) {
     console.log(`
 🤖 AI Agent Executor (Sprint 模式)
 
-用法: node sprint-agent-executor.js <sprint-id> [role-index]
+用法: node sprint-agent-executor.js <sprint-id> <role-index> [model]
     `);
     process.exit(1);
   }
@@ -1113,6 +1158,11 @@ async function main() {
   if (roleIndex === null) {
     console.log('❌ 需要指定 roleIndex');
     process.exit(1);
+  }
+  
+  // 如果传入了模型，覆盖默认配置
+  if (customModel) {
+    console.log(`   🎯 使用指定模型: ${customModel}`);
   }
 
   try {

@@ -245,11 +245,12 @@ export const useProjectStore = defineStore('project', {
       }
     },
 
-    async confirmIteration(sprintId, roleIndex) {
+    async confirmIteration(sprintId, roleIndex, output) {
       this.error = null
       try {
         const { data } = await axios.put(
-          `${API_URL}/api/sprints/${sprintId}/iterations/${roleIndex}/confirm`
+          `${API_URL}/api/sprints/${sprintId}/iterations/${roleIndex}/confirm`,
+          { output }
         )
         if (this.currentSprint?.id === sprintId) {
           this.currentSprint = await this.fetchSprint(sprintId)
@@ -313,6 +314,25 @@ export const useProjectStore = defineStore('project', {
         return data
       } catch (e) {
         return { valid: false, error: e.message }
+      }
+    },
+
+    // 模型配置
+    async fetchModelConfig() {
+      try {
+        const { data } = await axios.get(`${API_URL}/api/config/models`)
+        return data
+      } catch (e) {
+        return null
+      }
+    },
+
+    async saveModelConfig(config) {
+      try {
+        await axios.put(`${API_URL}/api/config/models`, config)
+        return true
+      } catch (e) {
+        return false
       }
     }
   }

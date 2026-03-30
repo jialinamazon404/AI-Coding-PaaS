@@ -1,9 +1,52 @@
 # Moby Dick - AI 开发舰队
 
-> **版本**: v2.2.0
+> **版本**: v2.3.0
 > 致敬白胡子的多角色 AI 开发团队系统（原 DevForge - Team Pipeline）
 
-## v2.2.0 更新内容
+## v2.3.0 更新内容
+
+### 🤖 Agent 自动流转
+- Agent 执行完成后自动确认并流转到下一阶段
+- Ops 角色自动获取 Developer 的输出作为输入
+- 自动确认失败时保持 `completed` 状态，支持手动确认
+
+### 🔧 Sprint ID 复制
+- Sprint 详情页显示完整 ID
+- 一键复制按钮，支持 HTTPS/HTTP 环境
+- 复制成功/失败状态即时反馈
+
+### ⚡ 实时进度显示
+- WebSocket 实时推送 agent:progress 事件
+- 界面实时显示 Agent 执行进度日志
+- 每个角色执行状态即时更新
+
+### 🎯 角色卡片增强
+- 角色卡片显示 Skill 和 Model 信息
+- 角色详情面板支持模型切换
+- 模型配置持久化到 LocalStorage
+
+### 📐 角色顺序优化
+- 新顺序：BA → 产品 → 架构师 → 开发者 → QA → SRE → 进化顾问
+- 条件触发角色：幽灵（安全审计）、创意（设计评审）
+
+### 🌐 网络访问支持
+- 服务绑定 0.0.0.0，支持局域网 IP 访问
+- Dashboard: http://localhost:5173 / http://{IP}:5173
+- API: http://localhost:3000 / http://{IP}:3000
+
+### 🧹 僵尸进程清理
+- sprint-agent-executor.js 增加僵尸进程检测
+- 定时清理超时未退出的 Agent 进程
+- 防止资源泄漏
+
+### 📝 文本域优化
+- 输入/输出文本域最大高度限制
+- 支持滚动查看长内容
+- 优化移动端体验
+
+---
+
+## v2.2.0 更新内容 (历史)
 
 ### ⏱️ Developer 超时优化
 - Developer 超时从 5 分钟增加到 10 分钟
@@ -68,13 +111,22 @@
 
 | 角色 | 图标 | 目标 | 输入 | 输出 | 模型 | Skill |
 |------|------|------|------|------|------|-------|
-| **Product** | 📋 | 需求分析 | 用户原始需求 | PRD (JSON) | `big-pickle` | brainstorming |
+| **BA** | 📝 | 业务分析 | 用户原始需求 | 业务分析报告 | `big-pickle` | brainstorming |
+| **Product** | 📋 | 需求分析 | 业务分析 | PRD (JSON) | `big-pickle` | brainstorming |
 | **Architect** | 🏗️ | 架构设计 | PRD | OpenSpec (YAML) | `big-pickle` | plan-eng-review |
-| **Scout** | 🔍 | 可行性验证 | 用户需求 | 风险评估报告 | `gpt-5-nano` | - |
 | **Developer** | 💻 | 代码实现 | PRD + OpenSpec | 前端/后端代码 + README + API.md | `big-pickle` | test-driven-development |
 | **Tester** | 🧪 | 功能+安全测试 | 代码路径 | test-report.md + security-report.md | `big-pickle` | gstack/qa |
-| **Ops** | ⚙️ | 部署配置 | OpenSpec | Dockerfile/部署配置 | `gpt-5-nano` | ship |
-| **Evolver** | 🔄 | 重构优化 | 现有代码 | 重构建议报告 | `gpt-5-nano` | - |
+| **SRE** | 🚀 | 部署配置 | Developer 输出 | Dockerfile/部署配置 | `gpt-5-nano` | ship |
+| **Evolver** | 🔄 | 重构优化 | 现有代码 | 重构建议报告 | `gpt-5-nano` | retro |
+| **Ghost** | 👻 | 安全审计 | 全部输出 | 安全报告 | `big-pickle` | cso |
+| **Creative** | 🎨 | 设计评审 | 全部输出 | 评审意见 | `big-pickle` | design-review |
+
+### 条件触发角色
+
+| 角色 | 图标 | 触发条件 | Skill |
+|------|------|----------|-------|
+| **Ghost** | 👻 | REVIEW / SECURITY | cso - 安全审计 |
+| **Creative** | 🎨 | REVIEW / CRITICAL | design-review - UI/UX 评审 |
 
 ### 角色详细说明
 
@@ -179,13 +231,17 @@ database:
 
 | Agent | 模型 | Skill | 说明 |
 |-------|------|-------|------|
+| ba | `opencode/big-pickle` | brainstorming | 业务分析 |
 | product | `opencode/big-pickle` | brainstorming | 需求分析 |
 | architect | `opencode/big-pickle` | plan-eng-review | 架构设计评审 |
 | developer | `opencode/big-pickle` | test-driven-development | TDD 开发 |
 | tester | `opencode/big-pickle` | qa | 自动化 QA |
 | ops | `opencode/gpt-5-nano` | ship | 部署配置 |
-| scout | `opencode/gpt-5-nano` | - | 代码探索 |
-| evolver | `opencode/gpt-5-nano` | - | 重构优化 |
+| evolver | `opencode/gpt-5-nano` | retro | 重构优化 |
+| ghost | `opencode/big-pickle` | cso | 安全审计 |
+| creative | `opencode/big-pickle` | design-review | UI/UX 评审 |
+
+> **模型配置**: 可在 Dashboard 界面中点击角色卡片切换模型，配置保存到 LocalStorage
 
 ### gstack Skills
 
@@ -201,16 +257,29 @@ database:
 
 ## 快速开始
 
-### 1. 启动 Dashboard
+### 1. 启动服务
 
 ```bash
 cd /Users/jialin.chen/WorkSpace/DevForge
-node dashboard/server/server.js
+./restart.sh
+```
+
+或手动启动：
+
+```bash
+# 终端 1: API Server
+cd /Users/jialin.chen/WorkSpace/DevForge/dashboard/server
+node server.js
+
+# 终端 2: Dashboard (开发模式)
+cd /Users/jialin.chen/WorkSpace/DevForge/dashboard
+npm run dev
 ```
 
 ### 2. 打开浏览器
 
-访问 http://localhost:3000
+- 本地访问: http://localhost:5173
+- 局域网访问: http://{你的IP}:5173
 
 ### 3. 创建项目与冲刺
 
@@ -219,6 +288,13 @@ node dashboard/server/server.js
 3. 创建冲刺，填写需求
 4. 启动冲刺，开始执行角色
 
+### 常用命令
+
+```bash
+./restart.sh   # 重启所有服务
+./stop.sh     # 停止所有服务
+```
+
 ---
 
 ## 目录结构
@@ -226,6 +302,10 @@ node dashboard/server/server.js
 ```
 DevForge/
 ├── sprint-agent-executor.js   # Sprint 模式 Agent 执行器
+├── model-config.json          # 模型配置文件
+├── restart.sh                 # 重启脚本
+├── stop.sh                    # 停止脚本
+├── CLAUDE.md                  # Claude Code 配置
 │
 ├── dashboard/
 │   ├── server/
@@ -291,6 +371,23 @@ DevForge/
 | /api/sprints/:id/iterations/:i/confirm | PUT | 确认输出 |
 | /api/sprints/:id/iterations/:i/rerun | POST | 重跑角色 |
 
+### 配置 API
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| /api/config/models | GET | 获取模型配置 |
+| /api/config/models | PUT | 保存模型配置 |
+
+### WebSocket 事件
+
+| 事件 | 说明 |
+|------|------|
+| agent:progress | Agent 执行进度实时推送 |
+| agent:output | Agent 输出实时推送 |
+| iteration:confirmed | 角色确认完成 |
+| iteration:execution:started | 角色开始执行 |
+| sprint:started | 冲刺启动 |
+
 ---
 
 ## Dashboard 功能
@@ -298,12 +395,16 @@ DevForge/
 - **项目列表**: 创建、编辑、删除项目
 - **冲刺管理**: 创建冲刺，设定目标，分配角色
 - **角色执行**: 
+  - BA → 业务分析
   - Product → 生成 PRD
   - Architect → 生成 OpenSpec
   - Developer → 生成代码
   - Tester → 生成测试报告
+  - SRE → 部署配置
 - **实时状态**: WebSocket 推送执行进度
 - **日志查看**: 查看每个角色的输出日志
+- **模型切换**: 点击角色卡片切换模型
+- **Sprint ID 复制**: 一键复制 Sprint ID
 
 ---
 

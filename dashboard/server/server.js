@@ -513,8 +513,55 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/confirm', async (req, res)
       return res.status(404).json({ error: 'Iteration not found' });
     }
 
+    // 双向同步：如果请求包含 output，则同步更新
+    if (req.body.output) {
+      iteration.output = req.body.output;
+      
+      // 同步更新到 output 文件
+      const workspacePath = path.join(ROOT, '..', 'workspace', sprint.id);
+      const outputDir = path.join(workspacePath, 'output');
+      await fs.mkdir(outputDir, { recursive: true });
+      
+      // 根据角色确定文件名
+      const roleNames = ['ba', 'product', 'architect', 'developer', 'tester', 'ops', 'evolver', 'ghost', 'creative'];
+      const role = iteration.role || roleNames[roleIndex] || 'unknown';
+      const fileNameMap = {
+        'ba': 'ba-analysis.md',
+        'product': 'prd.md',
+        'architect': 'openspec.md',
+        'developer': 'dev-summary.md',
+        'tester': 'test-report.md',
+        'ops': 'ops-config.md',
+        'evolver': 'evolver-report.md',
+        'ghost': 'security-report.md',
+        'creative': 'design-review.md'
+      };
+      const fileName = fileNameMap[role] || `${role}-output.md`;
+      
+      await fs.writeFile(path.join(outputDir, fileName), req.body.output, 'utf-8');
+    }
+
     iteration.status = 'confirmed';
     iteration.completedAt = new Date().toISOString();
+
+    // 自动传递输入给下一个角色
+    if (roleIndex < sprint.iterations.length - 1) {
+      const nextIteration = sprint.iterations[roleIndex + 1];
+      const nextRole = nextIteration?.role;
+      
+      // 角色顺序: product, architect, scout, developer, tester, ops
+      // Ops 需要从 Developer 获取输入，其他角色从上一个角色获取输入
+      if (nextRole === 'ops') {
+        // Ops 从 Developer 获取输入
+        const developerIndex = sprint.iterations.findIndex(i => i.role === 'developer');
+        if (developerIndex >= 0) {
+          nextIteration.userInput = sprint.iterations[developerIndex].output;
+        }
+      } else {
+        // 其他角色使用当前角色的输出作为输入
+        nextIteration.userInput = iteration.output;
+      }
+    }
 
     // 移动到下一个角色，并设置为 ready 状态
     if (roleIndex < sprint.iterations.length - 1) {
@@ -625,14 +672,38 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
     iteration.startedAt = new Date().toISOString();
     await sprintManager.save(sprint.id);
 
+    // 读取模型配置
+    let modelConfig = {}
+    try {
+      const configPath = path.join(ROOT, '..', 'model-config.json')
+      const configData = await fs.readFile(configPath, 'utf-8')
+      modelConfig = JSON.parse(configData)
+    } catch (e) {
+      // 使用默认模型配置
+      modelConfig = {
+        ba: 'opencode/big-pickle',
+        product: 'opencode/big-pickle',
+        architect: 'opencode/big-pickle',
+        developer: 'opencode/big-pickle',
+        tester: 'opencode/big-pickle',
+        ops: 'opencode/gpt-5-nano',
+        evolver: 'opencode/gpt-5-nano',
+        ghost: 'opencode/big-pickle',
+        creative: 'opencode/big-pickle'
+      }
+    }
+
     // 启动 Agent Executor 进程
     console.log(`🚀 启动 Agent Executor for sprint ${sprintId.slice(0, 8)}, role ${roleIndex}`);
 
     const apiPort = process.env.PORT || 3000;
-    const agentProc = spawn('node', [AI_AGENT_EXECUTOR_SPRINT, sprintId, roleIndex.toString()], {
+    const roleName = iteration.role;
+    const model = modelConfig[roleName] || 'opencode/big-pickle';
+    
+    const agentProc = spawn('node', [AI_AGENT_EXECUTOR_SPRINT, sprintId, roleIndex.toString(), model], {
       cwd: ROOT,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, API_BASE: `http://localhost:${apiPort}` }
+      env: { ...process.env, API_BASE: `http://localhost:${apiPort}`, AGENT_MODEL: model }
     });
 
     runningAgents.set(`${sprintId}-${roleIndex}`, agentProc);
@@ -661,15 +732,54 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
         try {
           const sprint = await sprintManager.get(sprintId);
           if (sprint && sprint.iterations[roleIndex]) {
-            // 只有当输出不为空时才标记为 completed，否则标记为 waiting_input
-            const output = sprint.iterations[roleIndex].output;
+            const iteration = sprint.iterations[roleIndex];
+            const output = iteration.output;
+            
             if (output && output !== '正在执行...' && !output.includes('执行失败')) {
-              sprint.iterations[roleIndex].status = 'completed';
+              iteration.status = 'completed';
+              
+              // ========== 自动确认 ==========
+              try {
+                iteration.status = 'confirmed';
+                iteration.completedAt = new Date().toISOString();
+                
+                if (roleIndex < sprint.iterations.length - 1) {
+                  const nextIteration = sprint.iterations[roleIndex + 1];
+                  const nextRole = nextIteration?.role;
+                  
+                  if (nextRole === 'ops') {
+                    const developerIndex = sprint.iterations.findIndex(i => i.role === 'developer');
+                    if (developerIndex >= 0) {
+                      nextIteration.userInput = sprint.iterations[developerIndex].output;
+                    }
+                  } else {
+                    nextIteration.userInput = iteration.output;
+                  }
+                  
+                  sprint.currentRoleIndex = roleIndex + 1;
+                  sprint.status = 'running';
+                  sprint.iterations[sprint.currentRoleIndex].status = 'ready';
+                } else {
+                  sprint.status = 'completed';
+                  sprint.currentRoleIndex = sprint.iterations.length;
+                }
+                
+                await sprintManager.save(sprintId);
+                io.emit('iteration:confirmed', { sprintId, roleIndex, nextRoleIndex: sprint.currentRoleIndex });
+                console.log(`[auto-confirm] 角色 ${roleIndex} 已自动确认，流转到 ${sprint.currentRoleIndex}`);
+              } catch (autoErr) {
+                console.error('[auto-confirm] 自动确认失败，保持 completed 状态:', autoErr.message);
+                // 回退：保持在 completed，用户可手动确认
+                await sprintManager.save(sprintId);
+                io.emit('iteration:confirmed', { sprintId, roleIndex });
+              }
+              // ========== 结束 ==========
+              
             } else {
-              sprint.iterations[roleIndex].status = 'waiting_input';
+              iteration.status = 'waiting_input';
+              await sprintManager.save(sprintId);
+              io.emit('iteration:confirmed', { sprintId, roleIndex });
             }
-            await sprintManager.save(sprintId);
-            io.emit('iteration:confirmed', { sprintId, roleIndex });
           }
         } catch (e) {
           console.error('更新 iteration 状态失败:', e.message);
@@ -1008,10 +1118,50 @@ io.on('connection', (socket) => {
       socket.leave(`project:${data.projectId}`);
     }
   });
+  
+  // 转发 agent:progress 事件给所有订阅的客户端
+  socket.on('agent:progress', (data) => {
+    if (data.sprintId) {
+      io.to(`sprint:${data.sprintId}`).emit('agent:progress', data);
+    }
+  });
 
   socket.on('disconnect', () => {
     console.log('[WS] Client disconnected:', socket.id);
   });
+});
+
+// 获取模型配置
+app.get('/api/config/models', async (req, res) => {
+  try {
+    const configPath = path.join(ROOT, 'model-config.json');
+    const data = await fs.readFile(configPath, 'utf-8');
+    res.json(JSON.parse(data));
+  } catch (e) {
+    // 返回默认配置
+    res.json({
+      ba: 'opencode/big-pickle',
+      product: 'opencode/big-pickle',
+      architect: 'opencode/big-pickle',
+      developer: 'opencode/big-pickle',
+      tester: 'opencode/big-pickle',
+      ops: 'opencode/gpt-5-nano',
+      evolver: 'opencode/gpt-5-nano',
+      ghost: 'opencode/big-pickle',
+      creative: 'opencode/big-pickle'
+    });
+  }
+});
+
+// 保存模型配置
+app.put('/api/config/models', async (req, res) => {
+  try {
+    const configPath = path.join(ROOT, 'model-config.json');
+    await fs.writeFile(configPath, JSON.stringify(req.body, null, 2), 'utf-8');
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 启动服务器
@@ -1021,12 +1171,14 @@ async function start() {
   await sprintManager.load();
   
   const PORT = process.env.PORT || 3000;
-  httpServer.listen(PORT, () => {
+  const HOST = process.env.HOST || '0.0.0.0';
+  httpServer.listen(PORT, HOST, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║          Moby Dick API Server                      ║
 ║                                                           ║
 ║  HTTP:      http://localhost:${PORT}                         ║
+║  HTTP:      http://${HOST === '0.0.0.0' ? '0.0.0.0' : HOST}:${PORT}                         ║
 ║  WebSocket: ws://localhost:${PORT}                           ║
 ║                                                           ║
 ║  Endpoints:                                              ║
