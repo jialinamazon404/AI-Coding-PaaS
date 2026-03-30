@@ -226,6 +226,12 @@
                 </div>
                 <div class="flex space-x-2">
                   <button
+                    @click="previewFile(file)"
+                    class="px-3 py-1.5 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 rounded text-xs transition-colors"
+                  >
+                    预览
+                  </button>
+                  <button
                     @click="openFile(file.path)"
                     class="px-3 py-1.5 bg-vue-primary/20 text-vue-primary hover:bg-vue-primary/30 rounded text-xs transition-colors"
                   >
@@ -328,6 +334,50 @@
         </div>
       </div>
     </div>
+
+    <!-- 预览弹窗 -->
+    <div v-if="showPreview" class="fixed inset-0 z-50 flex items-center justify-center">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closePreview"></div>
+      <div class="relative bg-gray-900 rounded-xl shadow-2xl w-full max-w-4xl mx-4 h-[80vh] flex flex-col border border-vue-border">
+        <!-- 头部 -->
+        <div class="flex items-center justify-between p-4 border-b border-vue-border">
+          <div class="flex items-center space-x-3">
+            <span class="text-2xl">{{ previewFile?.icon }}</span>
+            <div>
+              <h3 class="text-lg font-semibold text-white">{{ previewFile?.name }}</h3>
+              <p class="text-xs text-gray-500">{{ previewFile?.path }}</p>
+            </div>
+          </div>
+          <div class="flex space-x-2">
+            <button
+              @click="downloadFile(previewFile?.path)"
+              class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+            >
+              下载
+            </button>
+            <button
+              @click="closePreview"
+              class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+            >
+              关闭
+            </button>
+          </div>
+        </div>
+        <!-- 内容 -->
+        <div class="flex-1 overflow-auto p-4">
+          <div v-if="previewLoading" class="flex items-center justify-center h-full">
+            <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full"></div>
+          </div>
+          <div v-else-if="previewError" class="flex items-center justify-center h-full">
+            <div class="text-center">
+              <div class="text-4xl mb-4">❌</div>
+              <p class="text-red-400">{{ previewError }}</p>
+            </div>
+          </div>
+          <pre v-else class="text-gray-300 text-sm whitespace-pre-wrap font-mono">{{ previewContent }}</pre>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div v-else class="text-center py-20">
@@ -358,6 +408,13 @@ const confirmModify = ref(false)
 const showCancelConfirm = ref(false)
 const showCopySuccess = ref(false)
 const progressLog = ref('')
+
+// 预览弹窗状态
+const showPreview = ref(false)
+const previewFile = ref(null)
+const previewContent = ref('')
+const previewLoading = ref(false)
+const previewError = ref('')
 
 const currentIteration = computed(() => {
   if (selectedIterationIndex.value === null) return null
@@ -773,5 +830,39 @@ function downloadFile(filePath) {
   link.href = url
   link.download = filePath.split('/').pop()
   link.click()
+}
+
+async function previewFile(file) {
+  previewFile.value = file
+  previewContent.value = ''
+  previewError.value = ''
+  previewLoading.value = true
+  showPreview.value = true
+
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:3000'
+    const response = await fetch(`${baseUrl}/api/sprints/${props.sprintId}/file?file=${encodeURIComponent(file.path)}`)
+    if (!response.ok) {
+      const err = await response.json()
+      throw new Error(err.error || 'Failed to load file')
+    }
+    const data = await response.json()
+    if (data.type === 'directory') {
+      previewContent.value = JSON.stringify(data.tree, null, 2)
+    } else {
+      previewContent.value = data.content
+    }
+  } catch (e) {
+    previewError.value = e.message || '加载失败'
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function closePreview() {
+  showPreview.value = false
+  previewFile.value = null
+  previewContent.value = ''
+  previewError.value = ''
 }
 </script>

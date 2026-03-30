@@ -1164,6 +1164,76 @@ app.put('/api/config/models', async (req, res) => {
   }
 });
 
+// ==================== 文件预览 API ====================
+
+// 读取 sprint 输出文件内容
+app.get('/api/sprints/:sprintId/file', async (req, res) => {
+  try {
+    const { file } = req.query;
+    if (!file) {
+      return res.status(400).json({ error: 'File path is required' });
+    }
+
+    const sprintId = req.params.sprintId;
+    const workspacePath = path.join(ROOT, '..', 'workspace', sprintId);
+    const fullPath = path.join(workspacePath, file);
+
+    // 安全检查：防止路径穿越
+    if (!fullPath.startsWith(workspacePath)) {
+      return res.status(403).json({ error: 'Invalid file path' });
+    }
+
+    if (!fsSync.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const stat = await fs.stat(fullPath);
+    if (stat.isDirectory()) {
+      // 如果是目录，返回目录结构
+      async function getDirTree(dir, depth = 0) {
+        if (depth > 2) return [];
+        const items = await fs.readdir(dir, { withFileTypes: true });
+        const result = [];
+        for (const item of items) {
+          if (['node_modules', '.git', 'dist'].includes(item.name)) continue;
+          const itemPath = path.join(dir, item.name);
+          if (item.isDirectory()) {
+            result.push({
+              name: item.name,
+              type: 'directory',
+              children: await getDirTree(itemPath, depth + 1)
+            });
+          } else {
+            const itemStat = await fs.stat(itemPath);
+            result.push({
+              name: item.name,
+              type: 'file',
+              size: itemStat.size
+            });
+          }
+        }
+        return result;
+      }
+      const tree = await getDirTree(fullPath);
+      return res.json({ type: 'directory', tree });
+    }
+
+    // 读取文件内容
+    const content = await fs.readFile(fullPath, 'utf-8');
+    const ext = path.extname(fullPath).toLowerCase();
+    
+    res.json({
+      type: 'file',
+      name: path.basename(fullPath),
+      ext,
+      content,
+      size: stat.size
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 启动服务器
 async function start() {
   await ensureDirs();
