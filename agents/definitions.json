@@ -14,6 +14,13 @@
           "stages": ["product", "architect", "scout", "developer", "tester", "ops", "evolver"],
           "context": {}
         }
+      },
+      "output_files": {
+        "routeDecision": {
+          "path": "output/route-decision.md",
+          "description": "路由决策记录",
+          "type": "markdown"
+        }
       }
     },
     "product": {
@@ -44,32 +51,35 @@
           "stories": [{"id": "US-001", "as_a": "...", "i_want": "...", "so_that": "...", "acceptance": ["标准1", "标准2"]}],
           "features": [{"id": "F-001", "name": "功能名", "priority": "HIGH|MEDIUM|LOW", "description": "..."}],
           "constraints": ["约束条件"]
-        },
-        "productSpec": {
-          "overview": "产品概述",
-          "goals": ["产品目标"],
-          "userPersonas": ["用户画像"],
-          "competitors": ["竞品分析"]
-        },
-        "uiLayout": {
-          "screens": ["页面列表"],
-          "navigation": "导航结构",
-          "layoutSuggestions": ["布局建议"]
-        },
-        "userJourney": {
-          "flows": ["交互流程"],
-          "painPoints": ["痛点"],
-          "improvements": ["改进建议"]
-        },
-        "markdown": "# PRD 文档内容"
+        }
       },
       "output_files": {
-        "thinking": "thinking/01-product.json",
-        "output": "output/prd.md",
-        "productSpec": "output/product-spec.md",
-        "uiLayout": "output/ui-layout.md",
-        "userJourney": "output/user-journey.md",
-        "userStories": "output/user-stories.md"
+        "prd": {
+          "path": "output/prd.md",
+          "description": "PRD 文档",
+          "type": "markdown",
+          "required": true
+        },
+        "productSpec": {
+          "path": "output/product-spec.md",
+          "description": "产品规格文档",
+          "type": "markdown"
+        },
+        "uiLayout": {
+          "path": "output/ui-layout.md",
+          "description": "界面布局建议",
+          "type": "markdown"
+        },
+        "userJourney": {
+          "path": "output/user-journey.md",
+          "description": "交互流程草图",
+          "type": "markdown"
+        },
+        "userStories": {
+          "path": "output/user-stories.md",
+          "description": "标准化用户故事",
+          "type": "markdown"
+        }
       }
     },
     "architect": {
@@ -107,8 +117,12 @@
         }
       },
       "output_files": {
-        "thinking": "thinking/02-architect.json",
-        "output": "output/openspec.md"
+        "openspec": {
+          "path": "output/openspec.md",
+          "description": "架构设计文档（OpenSpec）",
+          "type": "markdown",
+          "required": true
+        }
       }
     },
     "scout": {
@@ -135,8 +149,12 @@
         "recommendations": ["建议1", "建议2"]
       },
       "output_files": {
-        "thinking": "thinking/03-scout.json",
-        "output": "output/scout-report.md"
+        "scoutReport": {
+          "path": "output/scout-report.md",
+          "description": "技术可行性评估报告",
+          "type": "markdown",
+          "required": true
+        }
       }
     },
     "developer": {
@@ -162,8 +180,36 @@
         "pr_url": null
       },
       "output_files": {
-        "thinking": "thinking/04-developer.json",
-        "output": "output/dev-summary.md"
+        "devSummary": {
+          "path": "output/dev-summary.md",
+          "description": "开发摘要文档",
+          "type": "markdown",
+          "required": true
+        },
+        "readme": {
+          "path": "developer/README.md",
+          "description": "运行说明",
+          "type": "markdown",
+          "category": "code"
+        },
+        "apiDoc": {
+          "path": "developer/API.md",
+          "description": "接口文档",
+          "type": "markdown",
+          "category": "code"
+        },
+        "frontend": {
+          "path": "developer/frontend/",
+          "description": "前端代码目录",
+          "type": "directory",
+          "category": "code"
+        },
+        "backend": {
+          "path": "developer/backend/",
+          "description": "后端代码目录",
+          "type": "directory",
+          "category": "code"
+        }
       }
     },
     "tester": {
@@ -186,8 +232,17 @@
         "performance": {"lcp": "0", "fid": "0", "cls": "0", "load_time": "0"}
       },
       "output_files": {
-        "thinking": "thinking/05-tester.json",
-        "output": "output/test-report.md"
+        "testReport": {
+          "path": "output/test-report.md",
+          "description": "功能测试报告",
+          "type": "markdown",
+          "required": true
+        },
+        "securityReport": {
+          "path": "output/security-report.md",
+          "description": "接口安全报告",
+          "type": "markdown"
+        }
       }
     },
     "ops": {
@@ -212,8 +267,27 @@
         "env_template": {"NODE_ENV": "production"}
       },
       "output_files": {
-        "thinking": "thinking/06-ops.json",
-        "output": "output/ops-config.md"
+        "opsConfig": {
+          "path": "output/ops-config.md",
+          "description": "部署配置文档",
+          "type": "markdown",
+          "required": true
+        },
+        "dockerfile": {
+          "path": "output/Dockerfile",
+          "description": "Docker 配置文件",
+          "type": "dockerfile"
+        },
+        "dockerCompose": {
+          "path": "output/docker-compose.yml",
+          "description": "Docker Compose 编排配置",
+          "type": "yaml"
+        },
+        "ciConfig": {
+          "path": "output/.github/workflows/deploy.yml",
+          "description": "CI/CD 流水线配置",
+          "type": "yaml"
+        }
       }
     },
     "ghost": {
@@ -236,8 +310,12 @@
         "compliance": {"passed": [], "failed": []}
       },
       "output_files": {
-        "thinking": "thinking/07-ghost.json",
-        "output": "output/security-report.md"
+        "securityReport": {
+          "path": "output/security-report.md",
+          "description": "安全审计报告",
+          "type": "markdown",
+          "required": true
+        }
       }
     },
     "creative": {
@@ -263,8 +341,12 @@
         "recommendations": []
       },
       "output_files": {
-        "thinking": "thinking/08-creative.json",
-        "output": "output/design-review.md"
+        "designReview": {
+          "path": "output/design-review.md",
+          "description": "设计评审报告",
+          "type": "markdown",
+          "required": true
+        }
       }
     },
     "evolver": {
@@ -294,8 +376,12 @@
         "next_steps": ["下一步行动建议"]
       },
       "output_files": {
-        "thinking": "thinking/09-evolver.json",
-        "output": "output/evolver-report.md"
+        "evolverReport": {
+          "path": "output/evolver-report.md",
+          "description": "进化建议报告",
+          "type": "markdown",
+          "required": true
+        }
       }
     }
   },

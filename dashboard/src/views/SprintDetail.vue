@@ -207,9 +207,48 @@
             </div>
           </div>
           
-          <!-- 其他角色：显示完整输出 -->
+          <!-- 输出文件列表 -->
           <div v-else-if="currentIteration?.output || currentIteration?.status === 'running'" class="space-y-4">
-            <pre class="text-gray-300 text-sm whitespace-pre-wrap overflow-auto max-h-96 bg-vue-darker rounded-vue p-4 border border-vue-border">{{ formatOutput(currentIteration.output) }}</pre>
+            <!-- 文件列表显示 -->
+            <div v-if="currentIteration?.status === 'completed' || currentIteration?.status === 'confirmed'" class="space-y-3">
+              <h3 class="text-gray-400 text-sm font-medium mb-4">📁 输出文件</h3>
+              <div 
+                v-for="file in currentOutputFiles" 
+                :key="file.path"
+                class="flex items-center justify-between bg-vue-darker rounded-vue p-3 border border-vue-border hover:border-vue-primary/50 transition-colors"
+              >
+                <div class="flex items-center space-x-3">
+                  <span class="text-xl">{{ file.icon }}</span>
+                  <div>
+                    <div class="text-gray-200 text-sm font-medium">{{ file.name }}</div>
+                    <div class="text-gray-500 text-xs">{{ workspaceBasePath + file.path }}</div>
+                  </div>
+                </div>
+                <div class="flex space-x-2">
+                  <button
+                    @click="openFile(file.path)"
+                    class="px-3 py-1.5 bg-vue-primary/20 text-vue-primary hover:bg-vue-primary/30 rounded text-xs transition-colors"
+                  >
+                    打开
+                  </button>
+                  <button
+                    @click="downloadFile(file.path)"
+                    class="px-3 py-1.5 bg-gray-600/20 text-gray-300 hover:bg-gray-600/40 rounded text-xs transition-colors"
+                  >
+                    下载
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 执行中状态 -->
+            <div v-if="currentIteration?.status === 'running'" class="text-center py-4">
+              <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-3"></div>
+              <p class="text-gray-400">Agent 正在执行...</p>
+              <div v-if="progressLog" class="mt-3 text-vue-primary text-sm animate-pulse">
+                {{ progressLog }}
+              </div>
+            </div>
             
             <!-- 确认/重新执行按钮 -->
             <div v-if="canConfirm" class="flex justify-end space-x-3 pt-4 border-t border-vue-border">
@@ -225,13 +264,6 @@
               >
                 确认输出 ✓
               </button>
-            </div>
-            <div v-else-if="currentIteration?.status === 'running'" class="text-center py-4">
-              <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-3"></div>
-              <p class="text-gray-400">Agent 正在执行...</p>
-              <div v-if="progressLog" class="mt-3 text-vue-primary text-sm animate-pulse">
-                {{ progressLog }}
-              </div>
             </div>
           </div>
           <div v-else-if="currentIteration?.status === 'running'" class="text-center py-4">
@@ -667,5 +699,79 @@ function sprintStatusText(status) {
 function formatDate(dateStr) {
   if (!dateStr) return '-'
   return new Date(dateStr).toLocaleString('zh-CN')
+}
+
+// 输出文件列表配置
+const outputFilesConfig = {
+  gatekeeper: [
+    { name: '路由决策', icon: '🚪', path: 'output/route-decision.md', category: 'doc' }
+  ],
+  product: [
+    { name: 'PRD 文档', icon: '📋', path: 'output/prd.md', category: 'doc' },
+    { name: '产品规格', icon: '📄', path: 'output/product-spec.md', category: 'doc' },
+    { name: '界面布局', icon: '🎨', path: 'output/ui-layout.md', category: 'doc' },
+    { name: '交互流程', icon: '🔀', path: 'output/user-journey.md', category: 'doc' },
+    { name: '用户故事', icon: '📝', path: 'output/user-stories.md', category: 'doc' }
+  ],
+  architect: [
+    { name: '架构设计', icon: '🏗️', path: 'output/openspec.md', category: 'doc' }
+  ],
+  scout: [
+    { name: '风险评估', icon: '🔍', path: 'output/scout-report.md', category: 'doc' }
+  ],
+  developer: [
+    { name: '开发摘要', icon: '📋', path: 'output/dev-summary.md', category: 'doc' },
+    { name: 'README', icon: '📖', path: 'developer/README.md', category: 'code' },
+    { name: 'API 文档', icon: '📚', path: 'developer/API.md', category: 'code' },
+    { name: '前端代码', icon: '💻', path: 'developer/frontend/', category: 'dir' },
+    { name: '后端代码', icon: '⚙️', path: 'developer/backend/', category: 'dir' }
+  ],
+  tester: [
+    { name: '测试报告', icon: '🧪', path: 'output/test-report.md', category: 'doc' },
+    { name: '安全报告', icon: '🔒', path: 'output/security-report.md', category: 'doc' }
+  ],
+  ops: [
+    { name: '部署配置', icon: '⚙️', path: 'output/ops-config.md', category: 'doc' },
+    { name: 'Dockerfile', icon: '🐳', path: 'output/Dockerfile', category: 'config' },
+    { name: 'Docker Compose', icon: '📦', path: 'output/docker-compose.yml', category: 'config' },
+    { name: 'CI/CD', icon: '🔄', path: 'output/.github/workflows/deploy.yml', category: 'config' }
+  ],
+  ghost: [
+    { name: '安全审计', icon: '👻', path: 'output/security-report.md', category: 'doc' }
+  ],
+  creative: [
+    { name: '设计评审', icon: '🎨', path: 'output/design-review.md', category: 'doc' }
+  ],
+  evolver: [
+    { name: '进化建议', icon: '🔮', path: 'output/evolver-report.md', category: 'doc' }
+  ]
+}
+
+const currentOutputFiles = computed(() => {
+  const role = currentIteration.value?.role
+  if (!role || !outputFilesConfig[role]) return []
+  return outputFilesConfig[role]
+})
+
+const workspaceBasePath = computed(() => {
+  return `/Users/jialin.chen/WorkSpace/DevForge/workspace/${props.sprintId}/`
+})
+
+function getFileUrl(filePath) {
+  const base = workspaceBasePath.value
+  return `file://${base}${filePath}`
+}
+
+function openFile(filePath) {
+  const url = getFileUrl(filePath)
+  window.open(url, '_blank')
+}
+
+function downloadFile(filePath) {
+  const url = getFileUrl(filePath)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filePath.split('/').pop()
+  link.click()
 }
 </script>

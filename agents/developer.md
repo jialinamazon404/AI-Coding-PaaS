@@ -62,52 +62,46 @@ git push origin feature/{pipelineId}
 gh pr create --title "feat: {title}" --body "..."
 ```
 
-## 输出格式
+## 输出文件
 
-```json
-{
-  "pipelineId": "uuid",
-  "timestamp": "ISO8601",
-  "branch": "feature/{pipelineId}",
-  "files": {
-    "created": [
-      {"path": "src/file.ts", "lines": 123, "type": "implementation|test|config"}
-    ],
-    "modified": [
-      {"path": "src/existing.ts", "lines_added": 45, "lines_removed": 10}
-    ]
-  },
-  "commits": [
-    {
-      "sha": "abc123",
-      "message": "...",
-      "timestamp": "ISO8601"
-    }
-  ],
-  "pr": {
-    "url": "https://github.com/...",
-    "title": "...",
-    "status": "open|merged|closed"
-  },
-  "test_results": {
-    "total": 50,
-    "passed": 48,
-    "failed": 2,
-    "skipped": 0,
-    "coverage": "85%"
-  },
-  "artifacts": {
-    "screenshots": [],
-    "logs": []
-  }
-}
+所有输出文件位于 `workspace/{sprintId}/` 目录下：
+
+### 文档输出
+
+| 文件 | 路径 | 说明 | 是否必需 |
+|------|------|------|----------|
+| 开发摘要 | `output/dev-summary.md` | 开发完成情况、文件清单、测试结果 | ✅ 必需 |
+| 运行说明 | `developer/README.md` | 项目运行指南 | - |
+| 接口文档 | `developer/API.md` | API 接口说明 | - |
+
+### 代码输出
+
+| 目录 | 路径 | 说明 |
+|------|------|------|
+| 前端代码 | `developer/frontend/` | 前端源代码（Vue/React） |
+| 后端代码 | `developer/backend/` | 后端源代码（Express/Spring） |
+
+### 目录结构示例
+
 ```
-
-## 输出位置
-
-- 代码: 在项目目录下
-- Git: feature/{pipelineId} 分支
-- PR: GitHub/GitLab
+developer/
+├── README.md           # 运行说明
+├── API.md             # 接口文档
+├── frontend/          # 前端代码
+│   ├── src/
+│   │   ├── components/
+│   │   ├── views/
+│   │   ├── api/
+│   │   └── stores/
+│   └── package.json
+└── backend/           # 后端代码
+    ├── src/
+    │   ├── routes/
+    │   ├── controllers/
+    │   ├── services/
+    │   └── models/
+    └── package.json
+```
 
 ## 日志格式
 

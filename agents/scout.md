@@ -73,9 +73,22 @@ tools: [grep, glob, read, bash, code_search]
 }
 ```
 
-## 输出位置
+## 输出文件
 
-- 分析报告: `.omc/specs/{pipelineId}/scout-report.json`
+所有输出文件位于 `workspace/{sprintId}/` 目录下：
+
+| 文件 | 路径 | 说明 | 是否必需 |
+|------|------|------|----------|
+| 风险评估报告 | `output/scout-report.md` | 技术可行性评估、风险识别、依赖分析 | ✅ 必需 |
+
+### 输出格式
+
+风险评估报告使用 Markdown 格式，包含：
+- 技术可行性分析
+- 风险清单（按严重程度排序）
+- 依赖关系分析
+- 相似实现参考
+- 建议和替代方案
 
 ## 工作流程
 

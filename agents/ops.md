@@ -58,11 +58,20 @@ tools: [bash, docker, read, write]
 }
 ```
 
-## 输出位置
+## 输出文件
 
-- Docker: 项目目录下
-- CI: `.github/workflows/` 或 `.gitlab-ci.yml`
-- 脚本: `scripts/`
+所有输出文件位于 `workspace/{sprintId}/` 目录下：
+
+| 文件 | 路径 | 说明 | 是否必需 |
+|------|------|------|----------|
+| 部署配置 | `output/ops-config.md` | 部署配置文档，包含 Dockerfile、docker-compose、CI/CD 说明 | ✅ 必需 |
+| Dockerfile | `output/Dockerfile` | Docker 镜像构建配置 | - |
+| Docker Compose | `output/docker-compose.yml` | 容器编排配置 | - |
+| CI/CD 配置 | `output/.github/workflows/deploy.yml` | GitHub Actions 流水线配置 | - |
+
+### 输出格式
+
+部署配置使用 Markdown 格式说明文档，配置文件使用对应格式（Dockerfile、YAML）。
 
 ## Dockerfile 示例
 

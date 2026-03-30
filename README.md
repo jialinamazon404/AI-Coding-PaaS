@@ -387,6 +387,39 @@ DevForge/
 
 ---
 
+## 输出文件规范
+
+所有角色输出文件统一使用 **Markdown (.md)** 格式，位于 `workspace/{sprintId}/` 目录下：
+
+### 角色输出文件清单
+
+| 角色 | 输出文件 | 路径 | 说明 |
+|------|---------|------|------|
+| **Gatekeeper** | 路由决策 | `output/route-decision.md` | 路由决策记录 |
+| **Product** | PRD 文档 | `output/prd.md` | 产品需求文档 |
+| | 产品规格 | `output/product-spec.md` | 产品概述、目标、竞品 |
+| | 界面布局 | `output/ui-layout.md` | 页面布局建议 |
+| | 交互流程 | `output/user-journey.md` | 用户旅程 |
+| | 用户故事 | `output/user-stories.md` | 标准化用户故事 |
+| **Architect** | 架构设计 | `output/openspec.md` | OpenSpec 架构文档 |
+| **Scout** | 风险评估 | `output/scout-report.md` | 技术可行性评估 |
+| **Developer** | 开发摘要 | `output/dev-summary.md` | 开发完成情况 |
+| | 运行说明 | `developer/README.md` | 项目运行指南 |
+| | 接口文档 | `developer/API.md` | API 说明 |
+| | 前端代码 | `developer/frontend/` | 前端源代码 |
+| | 后端代码 | `developer/backend/` | 后端源代码 |
+| **Tester** | 测试报告 | `output/test-report.md` | 功能测试报告 |
+| | 安全报告 | `output/security-report.md` | 接口安全报告 |
+| **Ops** | 部署配置 | `output/ops-config.md` | 部署说明文档 |
+| | Dockerfile | `output/Dockerfile` | Docker 配置 |
+| | Docker Compose | `output/docker-compose.yml` | 容器编排 |
+| | CI/CD | `output/.github/workflows/` | 流水线配置 |
+| **Ghost** | 安全审计 | `output/security-report.md` | 安全漏洞扫描 |
+| **Creative** | 设计评审 | `output/design-review.md` | UI/UX 评审 |
+| **Evolver** | 进化建议 | `output/evolver-report.md` | 重构改进建议 |
+
+---
+
 ## API 端点
 
 ### 项目 API

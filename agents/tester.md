@@ -89,10 +89,22 @@ tools: [bash, gstack_skills, file_write]
 }
 ```
 
-## 输出位置
+## 输出文件
 
-- 测试报告: `.omc/specs/{pipelineId}/test-report-{timestamp}.json`
-- 截图: `.omc/specs/{pipelineId}/screenshots/`
+所有输出文件位于 `workspace/{sprintId}/` 目录下：
+
+| 文件 | 路径 | 说明 | 是否必需 |
+|------|------|------|----------|
+| 测试报告 | `output/test-report.md` | 功能测试报告，包含测试用例、Bug 列表、性能数据 | ✅ 必需 |
+| 安全报告 | `output/security-report.md` | 接口安全测试报告 | - |
+
+### 输出格式
+
+测试报告使用 Markdown 格式，包含：
+- 测试摘要（通过/失败/跳过）
+- Bug 列表及复现步骤
+- 性能测试结果（LCP、FID、CLS）
+- 建议改进项
 
 ## 工作流程
 

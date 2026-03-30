@@ -164,13 +164,19 @@ skills: [user-story, product-spec-kit, ui-ux-designer, tailwind-design-system, u
 
 ## 输出文件
 
-| 文件 | 路径 | 说明 |
-|------|------|------|
-| PRD | `workspace/{sprintId}/output/prd.json` | 产品需求文档 |
-| 产品规格 | `workspace/{sprintId}/output/product-spec.md` | 产品规格文档 |
-| 界面布局 | `workspace/{sprintId}/output/ui-layout.md` | 界面布局建议 |
-| 交互流程 | `workspace/{sprintId}/output/user-journey.md` | 交互流程草图 |
-| 用户故事 | `workspace/{sprintId}/output/user-stories.md` | 标准化用户故事 |
+所有输出文件位于 `workspace/{sprintId}/` 目录下：
+
+| 文件 | 路径 | 说明 | 是否必需 |
+|------|------|------|----------|
+| PRD 文档 | `output/prd.md` | 产品需求文档，包含用户故事、功能清单、验收标准 | ✅ 必需 |
+| 产品规格 | `output/product-spec.md` | 产品概述、目标、用户画像、竞品分析 | - |
+| 界面布局 | `output/ui-layout.md` | 页面列表、导航结构、布局建议 | - |
+| 交互流程 | `output/user-journey.md` | 用户旅程、痛点、改进建议 | - |
+| 用户故事 | `output/user-stories.md` | 标准化的用户故事（As a... I want... So that...） | - |
+
+### 输出格式示例
+
+输出文件统一使用 Markdown 格式，确保可读性。
 
 ## 工作流程
 

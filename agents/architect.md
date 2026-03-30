@@ -74,10 +74,22 @@ spec:
       alternatives_considered: [...]
 ```
 
-## 输出位置
+## 输出文件
 
-- OpenSpec: `.omc/specs/{pipelineId}/openspec-v{N}.yaml`
-- 决策记录: `.omc/specs/{pipelineId}/decisions.md`
+所有输出文件位于 `workspace/{sprintId}/` 目录下：
+
+| 文件 | 路径 | 说明 | 是否必需 |
+|------|------|------|----------|
+| 架构设计文档 | `output/openspec.md` | OpenSpec 架构设计，包含组件划分、API 设计、数据模型、技术选型 | ✅ 必需 |
+
+### 输出格式
+
+输出文件使用 Markdown 格式，包含：
+- 系统概述
+- 组件架构图
+- API 接口定义
+- 数据模型
+- 技术选型决策
 
 ## 工作流程
 
