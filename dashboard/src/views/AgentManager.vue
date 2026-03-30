@@ -167,7 +167,34 @@
             </div>
           </div>
 
-          <div v-if="selectedAgent.id !== 'gatekeeper' && selectedAgent.id !== 'architect' && selectedAgent.id !== 'developer'" class="border-t border-gray-700 pt-4">
+          <!-- 开发者：显示场景化 Skills -->
+          <div v-else-if="selectedAgent.id === 'ops' && selectedAgent.scenarios" class="border-t border-gray-700 pt-4">
+            <h3 class="text-gray-400 text-sm mb-2">应用场景与 Skills</h3>
+            <div class="space-y-3">
+              <div 
+                v-for="scenario in selectedAgent.scenarios" 
+                :key="scenario.id"
+                class="bg-gradient-to-r from-green-500/10 to-teal-500/10 rounded-lg p-3 border border-green-500/20"
+              >
+                <div class="text-white font-medium mb-2">{{ scenario.name }}</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span 
+                    v-for="skill in scenario.skills" 
+                    :key="skill.name"
+                    :class="skill.name.includes('已安装') ? 'bg-green-500/30 text-green-300' : 'bg-green-500/20 text-green-300'"
+                    class="px-2 py-0.5 rounded text-xs"
+                  >
+                    {{ skill.name }}
+                  </span>
+                </div>
+                <div class="mt-2 text-gray-400 text-xs">
+                  工作流: {{ scenario.skills.map(s => s.name).join(' → ') }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedAgent.id !== 'gatekeeper' && selectedAgent.id !== 'architect' && selectedAgent.id !== 'developer' && selectedAgent.id !== 'ops'" class="border-t border-gray-700 pt-4">
             <h3 class="text-gray-400 text-sm mb-2">AI 模型</h3>
             <div class="flex items-center space-x-3">
               <select
@@ -456,12 +483,42 @@ const agents = [
     name: '运维',
     role: 'DevOps',
     icon: '⚙️',
-    description: '基础设施配置，部署脚本，CI/CD 流水线，环境变量管理',
+    description: '基础设施配置，部署脚本，CI/CD 流水线，多云平台支持',
     triggers: ['QA通过后', 'BUILD模式'],
-    tools: ['Docker', 'Shell', 'CI配置', '部署脚本'],
+    tools: ['Docker', 'Shell', 'CI配置', '部署脚本', 'Kubernetes'],
     route: ['ops'],
-    skills: [
-      { name: 'ship', description: 'Docker 配置、CI/CD 流水线、部署脚本' }
+    scenarios: [
+      {
+        id: 'container',
+        name: '容器化部署',
+        skills: [
+          { name: 'docker-helper', description: 'Docker 镜像构建和优化' },
+          { name: 'kubernetes', description: 'K8s 部署配置（kubectl/helm）' },
+          { name: 'prometheus', description: 'Prometheus 监控配置' },
+          { name: 'incident-response', description: '事件响应手册' }
+        ]
+      },
+      {
+        id: 'multi-cloud',
+        name: '多云部署',
+        skills: [
+          { name: 'azure-deploy', description: 'Azure 部署（已安装）' },
+          { name: 'AWS', description: 'AWS CloudFormation' },
+          { name: '阿里云', description: '阿里云 ROS 模板' },
+          { name: '聚石塔', description: '阿里巴巴电商云' },
+          { name: '抖音云', description: '抖音云部署' },
+          { name: '火山云', description: '火山引擎云' },
+          { name: '京东云', description: '京东云部署' }
+        ]
+      },
+      {
+        id: 'daily-ops',
+        name: '日常运维',
+        skills: [
+          { name: 'ship', description: '部署配置、Docker Compose' },
+          { name: 'ci-cd', description: 'CI/CD 流水线配置' }
+        ]
+      }
     ]
   },
   {
