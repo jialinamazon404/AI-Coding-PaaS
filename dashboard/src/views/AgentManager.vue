@@ -140,7 +140,34 @@
             </div>
           </div>
 
-          <div v-if="selectedAgent.id !== 'gatekeeper' && selectedAgent.id !== 'architect'" class="border-t border-gray-700 pt-4">
+          <!-- 开发者：显示场景化 Skills -->
+          <div v-else-if="selectedAgent.id === 'developer' && selectedAgent.scenarios" class="border-t border-gray-700 pt-4">
+            <h3 class="text-gray-400 text-sm mb-2">应用场景与 Skills</h3>
+            <div class="space-y-3">
+              <div 
+                v-for="scenario in selectedAgent.scenarios" 
+                :key="scenario.id"
+                class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-lg p-3 border border-blue-500/20"
+              >
+                <div class="text-white font-medium mb-2">{{ scenario.name }}</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span 
+                    v-for="skill in scenario.skills" 
+                    :key="skill.name"
+                    :class="skill.name.includes('必用') ? 'bg-orange-500/30 text-orange-300' : 'bg-blue-500/20 text-blue-300'"
+                    class="px-2 py-0.5 rounded text-xs"
+                  >
+                    {{ skill.name }}
+                  </span>
+                </div>
+                <div class="mt-2 text-gray-400 text-xs">
+                  工作流: {{ scenario.skills.map(s => s.name.replace('【', '').replace('】', '').replace('【必要时】', '')).join(' → ') }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedAgent.id !== 'gatekeeper' && selectedAgent.id !== 'architect' && selectedAgent.id !== 'developer'" class="border-t border-gray-700 pt-4">
             <h3 class="text-gray-400 text-sm mb-2">AI 模型</h3>
             <div class="flex items-center space-x-3">
               <select
@@ -375,10 +402,39 @@ const agents = [
     triggers: ['架构设计后'],
     tools: ['文件编辑', '文件写入', 'Git', 'Shell'],
     route: ['developer'],
-    skills: [
-      { name: 'api-design', description: 'RESTful API 设计原则' },
-      { name: 'event-driven', description: '事件驱动架构模式' },
-      { name: 'test-driven-development', description: 'TDD 开发（RED-GREEN-REFACTOR）' }
+    scenarios: [
+      {
+        id: 'daily-dev',
+        name: '日常功能开发',
+        skills: [
+          { name: 'code', description: '代码编写' },
+          { name: 'refactor', description: '代码重构优化' },
+          { name: 'test-driven-development', description: 'TDD 测试驱动开发' },
+          { name: 'document', description: '文档编写' },
+          { name: 'api-design', description: '【接口必用】RESTful API 设计' }
+        ]
+      },
+      {
+        id: 'bug-fix',
+        name: '复杂 bug 排查',
+        skills: [
+          { name: 'systematic-debugging', description: '系统调试、根因分析' },
+          { name: 'bug-hunter', description: 'Bug 追踪定位' },
+          { name: 'log-analyzer', description: '日志分析' },
+          { name: 'code', description: '代码修复' }
+        ]
+      },
+      {
+        id: 'specialized-dev',
+        name: '技术栈专项开发',
+        skills: [
+          { name: 'frontend-builder', description: '前端构建' },
+          { name: 'unit-test-generator', description: '单元测试生成' },
+          { name: 'dependency-checker', description: '依赖检查（npm audit）' },
+          { name: 'api-design', description: '【接口必用】RESTful API 设计' },
+          { name: 'event-driven', description: '【必要时】事件驱动架构' }
+        ]
+      }
     ]
   },
   {

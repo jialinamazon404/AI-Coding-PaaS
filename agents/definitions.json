@@ -183,7 +183,30 @@
       "icon": "💻",
       "goal": "基于 OpenSpec 实现代码，编写测试，Git 提交",
       "tools": ["read", "write", "edit", "bash", "git"],
-      "skills": ["api-design", "event-driven", "test-driven-development"],
+      "skills": ["api-design", "event-driven", "test-driven-development", "code-refactoring", "systematic-debugging", "unit-test-generator", "log-analyzer"],
+      "scenarios": {
+        "日常功能开发": {
+          "description": "日常功能开发，包含代码编写、重构优化、测试、文档",
+          "skills": ["code", "refactor", "test-driven-development", "document"],
+          "workflow": ["code", "refactor", "test", "document"],
+          "notes": "涉及接口时使用 api-design，必要时使用 event-driven",
+          "output": "功能代码、测试用例、API 文档"
+        },
+        "复杂 bug 排查": {
+          "description": "复杂 bug 排查修复，包含系统调试、Bug 追踪、日志分析、代码修复",
+          "skills": ["systematic-debugging", "bug-hunter", "log-analyzer", "code"],
+          "workflow": ["debug", "bug-hunter", "log-analyzer", "code"],
+          "notes": "使用 systematic-debugging 进行根因分析",
+          "output": "Bug 修复、问题分析报告"
+        },
+        "技术栈专项开发": {
+          "description": "针对特定技术栈的专项开发",
+          "skills": ["frontend-builder", "unit-test-generator", "dependency-checker", "api-design"],
+          "workflow": ["frontend-builder", "unit-test-generator", "dependency-checker"],
+          "notes": "前端使用 frontend-builder，后端涉及接口使用 api-design",
+          "output": "前端/后端代码、单元测试、依赖报告"
+        }
+      },
       "input": "OpenSpec 文档 + Scout 报告",
       "thinking_template": [
         "1. 理解要实现的功能范围",
