@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js >= 18](https://img.shields.io/badge/Node.js-%3E%3D18-green.svg)](https://nodejs.org/)
-[![Version](https://img.shields.io/badge/Version-2.0.0-red.svg)](package.json)
+[![Version](https://img.shields.io/badge/Version-1.0.0-red.svg)](package.json)
 
 ---
 
@@ -50,14 +50,14 @@ DevForge（代号 "Moby Dick"）是一个**多角色 AI 软件开发团队编排
 | 从零构建新功能 | `BUILD` | 产品 → 技术主管 → 架构 → 开发 → 测试 → 运维 → 进化 |
 | 核心/高风险功能 | `CRITICAL` | 产品 → 架构 → 设计评审 → 技术主管 → 开发 → 测试 → 进化 |
 | 代码/设计审查 | `REVIEW` | 创意评审 → 安全审计 → 测试验证 |
-| 技术可行性调研 | `QUERY` | 侦察兵快速评估 |
+| 技术可行性调研 | `QUERY` | 技术教练快速评估 |
 | 安全检查 | `SECURITY` | 安全审计 → 架构评估 |
 
 ---
 
 ## 核心特性
 
-- **10+ 专业角色**：守门人、产品经理、架构师、开发教练、开发者、测试工程师、运维工程师、安全幽灵、创意总监、进化顾问
+- **10 专业角色**：守门人、产品经理、架构师、开发教练、开发者、测试工程师、运维工程师、安全幽灵、创意总监、进化顾问
 - **分步 Skill 注入**：每个角色在每个步骤只加载所需 Skill，避免上下文膨胀（≤30KB 注入，超过按需加载）
 - **实时 Dashboard**：Vue 3 前端，支持项目管理、冲刺执行、实时进度推送（WebSocket）
 - **双数据模型**：支持 Pipeline（旧版）和 Sprint（新版）两种执行模式
@@ -105,7 +105,7 @@ cd ~/.claude/skills/gstack && ./setup
 ### 一键启动
 
 ```bash
-cd ./DevForge
+cd DevForge
 ./start.sh
 ```
 
@@ -224,14 +224,14 @@ projects/{projectId}/              # 项目根目录（持续演进）
 
 ```
 用户请求 → Gatekeeper (路由决策)
-              ↓
-    ┌─────────┼─────────┐
-    ↓         ↓         ↓
-   BA      Product    Architect
-    ↓         ↓         ↓
-  Scout   Developer   Tester    Ops
-              ↓         ↓
-           Creative   Evolver
+               ↓
+    ┌──────────┼──────────┐
+    ↓          ↓          ↓
+ Product    Creative    Ghost
+    ↓          ↓          ↓
+Tech Coach  Developer   Evolver
+    ↓          ↓
+Architect   Tester → Ops
 ```
 
 ### 技术栈
@@ -252,11 +252,9 @@ projects/{projectId}/              # 项目根目录（持续演进）
 | 角色 | 图标 | 目标 | 输出 |
 |------|------|------|------|
 | **Gatekeeper** | 🚪 | 路由决策 | 路由决策 + Pipeline 配置 |
-| **BA** | 📝 | 业务分析 | 业务分析报告 |
 | **Product** | 📋 | 需求分析 | PRD (JSON) |
 | **Architect** | 🏗️ | 架构设计 | OpenSpec Change Proposal |
-| **Tech Coach** | 🔍 | 技术翻译 | 技术实现文档、用户故事、可行性分析 |
-| **Tech Coach** | 🔍 | 技术实现指导 | 技术实现文档 |
+| **Tech Coach** | 🔍 | 技术翻译 | change-request、技术实现文档、可行性分析 |
 | **Developer** | 💻 | 代码实现 | 前端/后端代码 |
 | **Tester** | 🧪 | 功能+安全测试 | 测试报告 |
 | **Ops** | ⚙️ | 部署配置 | Dockerfile/部署配置 |
@@ -309,18 +307,18 @@ projects/{projectId}/              # 项目根目录（持续演进）
 | | 3/5 功能清单 | `product-spec-kit` | 3.8KB | ✅ | 产品规格文档生成 |
 | | 4/5 界面布局 | `tailwind-design-system` | 15KB | ✅ | 设计系统与组件规范 |
 | | 5/5 汇总 PRD | *(无)* | - | - | 整合所有产出 |
-| **Architect** | 1/4 系统架构 | `system-design` | 1.3KB | ✅ | 系统架构设计 |
-| | 2/4 API 设计 | `api-design` | 13KB | ✅ | RESTful API 规范 |
-| | 3/4 数据库设计 | `database-design` | 1.6KB | ✅ | 数据模型设计 |
-| | 4/4 OpenSpec | *(OpenSpec CLI)* | - | - | 使用 CLI 创建 change proposal |
-| **Developer** | 1/8 项目结构 | *(无)* | - | - | 目录初始化 |
-| | 2/8 后端配置 | *(无)* | - | - | 依赖安装 |
-| | 3/8 用户 API | `api-design` | 13KB | ✅ | 接口规范参考 |
-| | 4/8 角色 API | `api-design` | 13KB | ✅ | 接口规范参考 |
-| | 5/8 按用户故事开发 | *(无)* | - | - | 自动分批 |
-| | 6/8 按用户故事开发 | *(无)* | - | - | 自动分批 |
-| | 7/8 按用户故事开发 | *(无)* | - | - | 自动分批 |
-| | 8/8 开发文档 | `test-driven-development` | 9.8KB | ✅ | TDD 工作流 |
+| **Architect** | 1/5 系统设计 | `system-design` | 1.3KB | ✅ | 系统架构设计 |
+| | 2/5 API 设计 | `api-design` | 13KB | ✅ | RESTful API 规范 |
+| | 3/5 表设计 | `database-design` | 1.6KB | ✅ | 数据库表结构和关系 |
+| | 4/5 数据流转图 | *(无)* | - | - | 业务数据流转图（Mermaid） |
+| | 5/5 OpenSpec | *(OpenSpec CLI)* | - | - | 生成 OpenSpec Change Proposal |
+| **Developer** | 1/7 范围确认 | *(无)* | - | - | 读取 OpenSpec tasks.md 确认实现范围 |
+| | 2/7 第1批执行 | *(无)* | - | - | 执行 tasks.md 任务 1-10 |
+| | 3/7 第2批执行 | *(无)* | - | - | 执行 tasks.md 任务 11-20 |
+| | 4/7 第3批执行 | *(无)* | - | - | 执行 tasks.md 任务 21-30 |
+| | 5/7 第4批执行 | *(无)* | - | - | 执行 tasks.md 任务 31-40 |
+| | 6/7 第5批执行 | *(无)* | - | - | 执行 tasks.md 任务 41-50 + 剩余 |
+| | 7/7 开发文档 | `test-driven-development` | 9.8KB | ✅ | 生成 README.md、API.md、dev-summary.md |
 | **Tester** | 1/4 用例设计 | *(无)* | - | - | 测试用例规划 |
 | | 2/4 功能测试 | *(gstack /qa)* | - | - | 使用 gstack 执行功能测试 |
 | | 3/4 安全扫描 | *(gstack /qa-only)* | - | - | 安全回归验证（只报告） |
@@ -487,10 +485,18 @@ DevForge/
 │   ├── gatekeeper.md
 │   ├── product.md
 │   ├── architect.md
+│   ├── tech-coach.md
 │   ├── developer.md
 │   ├── tester.md
 │   ├── ops.md
-│   └── ...
+│   ├── evolver.md
+│   ├── ghost.md
+│   ├── creative.md
+│   ├── receptionist.md
+│   ├── architect/                    # 架构师扩展文档
+│   ├── developer/                    # 开发者扩展文档
+│   ├── product/                      # 产品扩展文档
+│   └── tester/                       # 测试扩展文档
 │
 ├── config/                           # 配置文件
 │   └── pipelineConfig.js
@@ -509,7 +515,7 @@ DevForge/
 │   │   └── ...
 │   └── package.json
 │
-├── workspace/                        # 冲刺执行记录（按 sprintId）
+├── workspace/                        # 冲刺执行记录（运行时生成，已 gitignore）
 │   └── {sprintId}/
 │       ├── output/                   # 角色交付物（PRD、架构文档、测试报告等）
 │       ├── thinking/                 # Agent 思考过程
@@ -520,7 +526,7 @@ DevForge/
 │       ├── tester/                   # 测试文档
 │       └── ops/                      # 运维文档
 │
-├── projects/                         # 项目根目录（持续演进）
+├── projects/                         # 项目根目录（运行时生成，已 gitignore）
 │   └── {projectId}/
 │       ├── project.json              # 项目元数据
 │       ├── sprints.json              # 冲刺列表
