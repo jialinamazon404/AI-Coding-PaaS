@@ -47,8 +47,8 @@ DevForge（代号 "Moby Dick"）是一个**多角色 AI 软件开发团队编排
 
 | 场景 | 路由 | 说明 |
 |------|------|------|
-| 从零构建新功能 | `BUILD` | 产品 → 架构 → 侦察 → 开发 → 测试 → 运维 → 进化 |
-| 核心/高风险功能 | `CRITICAL` | 产品 → 架构 → 设计评审 → 开发 → 测试 → 进化 |
+| 从零构建新功能 | `BUILD` | 产品 → 技术主管 → 架构 → 开发 → 测试 → 运维 → 进化 |
+| 核心/高风险功能 | `CRITICAL` | 产品 → 架构 → 设计评审 → 技术主管 → 开发 → 测试 → 进化 |
 | 代码/设计审查 | `REVIEW` | 创意评审 → 安全审计 → 测试验证 |
 | 技术可行性调研 | `QUERY` | 侦察兵快速评估 |
 | 安全检查 | `SECURITY` | 安全审计 → 架构评估 |
@@ -70,7 +70,7 @@ DevForge（代号 "Moby Dick"）是一个**多角色 AI 软件开发团队编排
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| Node.js | ≥ 18.0 | 运行环境 |
+| Node.js | ≥ 20.0 | 运行环境 |
 | npm | ≥ 9.0 | 包管理（随 Node.js 安装） |
 | OpenCode CLI | 最新版 | AI Agent 编排引擎 |
 | gstack Skills | 最新版 | 浏览器测试 + QA 技能集 |
@@ -80,6 +80,12 @@ DevForge（代号 "Moby Dick"）是一个**多角色 AI 软件开发团队编排
 
 ```bash
 npm install -g opencode
+```
+
+### 安装 OpenSpec
+
+```bash
+npm install -g @fission-ai/openspec@latest
 ```
 
 ### 配置 gstack
@@ -99,7 +105,7 @@ cd ~/.claude/skills/gstack && ./setup
 ### 一键启动
 
 ```bash
-cd /Users/jialin.chen/WorkSpace/DevForge
+cd ./DevForge
 ./start.sh
 ```
 
@@ -234,7 +240,7 @@ projects/{projectId}/              # 项目根目录（持续演进）
 |------|------|
 | 编排层 | OpenCode CLI |
 | 模型 | `opencode/qwen3.6-plus`, `opencode/big-pickle`, `opencode/gpt-5-nano` |
-| Skills | Superpowers Skills + gstack Skills |
+| Skills | Superpowers Skills + gstack Skills + OpenSpec |
 | 前端 | Vue 3 + Vite + Tailwind CSS + Pinia + Vue Router |
 | 后端 | Express.js + Socket.io |
 | 数据 | JSON 文件存储（内存 Map + 持久化） |
@@ -251,7 +257,6 @@ projects/{projectId}/              # 项目根目录（持续演进）
 | **Architect** | 🏗️ | 架构设计 | OpenSpec Change Proposal |
 | **Tech Coach** | 🔍 | 技术翻译 | 技术实现文档、用户故事、可行性分析 |
 | **Tech Coach** | 🔍 | 技术实现指导 | 技术实现文档 |
-| **Scout** | 🔍 | 技术可行性 | 风险评估报告 |
 | **Developer** | 💻 | 代码实现 | 前端/后端代码 |
 | **Tester** | 🧪 | 功能+安全测试 | 测试报告 |
 | **Ops** | ⚙️ | 部署配置 | Dockerfile/部署配置 |
@@ -312,9 +317,9 @@ projects/{projectId}/              # 项目根目录（持续演进）
 | | 2/8 后端配置 | *(无)* | - | - | 依赖安装 |
 | | 3/8 用户 API | `api-design` | 13KB | ✅ | 接口规范参考 |
 | | 4/8 角色 API | `api-design` | 13KB | ✅ | 接口规范参考 |
-| | 5/8 前端配置 | *(无)* | - | - | 依赖安装 |
-| | 6/8 用户页面 | *(无)* | - | - | 组件开发 |
-| | 7/8 内容页面 | *(无)* | - | - | 组件开发 |
+| | 5/8 按用户故事开发 | *(无)* | - | - | 自动分批 |
+| | 6/8 按用户故事开发 | *(无)* | - | - | 自动分批 |
+| | 7/8 按用户故事开发 | *(无)* | - | - | 自动分批 |
 | | 8/8 开发文档 | `test-driven-development` | 9.8KB | ✅ | TDD 工作流 |
 | **Tester** | 1/4 用例设计 | *(无)* | - | - | 测试用例规划 |
 | | 2/4 功能测试 | *(gstack /qa)* | - | - | 使用 gstack 执行功能测试 |
