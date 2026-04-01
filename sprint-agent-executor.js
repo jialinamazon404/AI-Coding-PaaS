@@ -1193,12 +1193,19 @@ projects/${pipelineId}/src/
 '''
 
 ### 然后确认实现范围
-1. 读取 OpenSpec Change Proposal:
-   - /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/proposal.md (需求背景)
-   - /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/design.md (技术设计)
-   - /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md (任务清单 - **关键**)
+**首先必须读取任务清单文件**，这是开发的核心依据：
 
-2. 检查现有代码（如有）:
+1. 读取 tasks.md（任务清单 - **必须首先读取**）:
+   文件位置: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+   读取后列出所有任务项。
+
+2. 读取 design.md（技术设计）:
+   /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/design.md
+
+3. 读取 proposal.md（需求背景）:
+   /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/proposal.md
+
+4. 检查现有代码（如有）:
    - /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 
 3. 确认本次实现范围，列出需要实现的任务列表
@@ -1214,46 +1221,52 @@ projects/${pipelineId}/src/
     // 步骤 2: 第1批任务 (1-10)
     `# 角色：开发者 - 步骤 2/7：按 tasks.md 执行（第1批: 任务 1-10）
 
+## 任务清单位置（必须读取）
+文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+
 ## 用户需求
 ${rawInput}
 ${specContext}
 ${techContext}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
+- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
-读取 tasks.md，确认总任务数，执行任务 1-10。
+首先读取 tasks.md 文件，确认任务总数，然后执行任务 1-10。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
-- **每完成一个任务后，必须调用 Write 工具保存代码到 ${projectDir}/**
-- 直接执行任务，不要询问是否可以继续
-- 如果代码已存在，验证并补充完整
+- **每完成一个任务后，必须调用 Write 工具保存代码到 /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/**
+- 代码保存路径示例：
+  - 后端: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/backend/src/routes/*.ts
+  - 前端: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/frontend/src/pages/*.tsx
 
 ## 输出
 每次任务完成输出 "[任务X] 完成: 任务描述"
-代码保存到 \`${projectDir}/\`
+代码保存到 /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 完成后继续下一步
 `,
     // 步骤 3: 第2批任务 (11-20)
     `# 角色：开发者 - 步骤 3/7：按 tasks.md 执行（第2批: 任务 11-20）
 
+## 任务清单位置
+文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
+- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
 继续执行任务 11-20。
 
 ### ⚠️ 强制要求（必须遵守）
-- **直接执行任务，不要询问是否可以继续**
-- 如果代码已存在，验证并补充完整
-- 发现问题直接修复，继续下一个任务
+- **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
+- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 
 ## 输出
 每次任务完成输出 "[任务X] 完成: 任务描述"
@@ -1262,20 +1275,22 @@ ${rawInput}
     // 步骤 4: 第3批任务 (21-30)
     `# 角色：开发者 - 步骤 4/7：按 tasks.md 执行（第3批: 任务 21-30）
 
+## 任务清单位置
+文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
+- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
 继续执行任务 21-30。
 
 ### ⚠️ 强制要求（必须遵守）
-- **直接执行任务，不要询问是否可以继续**
-- 如果代码已存在，验证并补充完整
-- 发现问题直接修复，继续下一个任务
+- **必须使用 Write 工具将代码写入文件**
+- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 
 ## 输出
 每次任务完成输出 "[任务X] 完成: 任务描述"
@@ -1284,20 +1299,22 @@ ${rawInput}
     // 步骤 5: 第4批任务 (31-40)
     `# 角色：开发者 - 步骤 5/7：按 tasks.md 执行（第4批: 任务 31-40）
 
+## 任务清单位置
+文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
+- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
 继续执行任务 31-40。
 
 ### ⚠️ 强制要求（必须遵守）
-- **直接执行任务，不要询问是否可以继续**
-- 如果代码已存在，验证并补充完整
-- 发现问题直接修复，继续下一个任务
+- **必须使用 Write 工具将代码写入文件**
+- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 
 ## 输出
 每次任务完成输出 "[任务X] 完成: 任务描述"
@@ -1306,20 +1323,22 @@ ${rawInput}
     // 步骤 6: 第5批任务 (41-50 + 剩余)
     `# 角色：开发者 - 步骤 6/7：按 tasks.md 执行（第5批: 任务 41-50 + 剩余）
 
+## 任务清单位置
+文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
+- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
 继续执行任务 41-50，然后检查是否还有剩余任务，如有则继续执行直到全部完成。
 
 ### ⚠️ 强制要求（必须遵守）
-- **直接执行任务，不要询问是否可以继续**
-- 如果代码已存在，验证并补充完整
-- 发现问题直接修复，继续下一个任务
+- **必须使用 Write 工具将代码写入文件**
+- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 - 任务全部完成后继续执行 Step 7（生成文档）
 
 ## 输出
@@ -1333,15 +1352,15 @@ ${rawInput}
 ${rawInput}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
+- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
-生成开发文档（必须使用 Write 工具写入文件）：
+生成开发文档（**必须使用 Write 工具写入文件**）：
 
-1. \`${projectDir}/README.md\` - 项目运行说明
-2. \`${projectDir}/API.md\` - 接口文档
-3. \`${projectDir}/dev-summary.md\` - 开发摘要
+1. /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/README.md - 项目运行说明
+2. /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/API.md - 接口文档
+3. /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/dev-summary.md - 开发摘要
 
 ## ⚠️ 强制要求
 - **必须使用 Write 工具将文档写入文件**
