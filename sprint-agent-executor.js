@@ -186,7 +186,7 @@ const TIMEOUT_CONFIG = {
   product: 300000,    // 5分钟
   architect: 300000,  // 5分钟
   tech_coach: 300000, // 5分钟
-  developer: 600000,  // 10分钟 (8步拆分后每步)
+  developer: 1800000,  // 30分钟 (7步拆分后每步)
   tester: 300000,     // 5分钟
   ops: 300000,        // 5分钟
   evolver: 300000     // 5分钟
