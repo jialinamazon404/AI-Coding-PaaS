@@ -1218,38 +1218,36 @@ projects/${pipelineId}/src/
 ## 输出
 确认范围后直接输出任务列表到控制台，然后开始执行 Step 2
 `,
-    // 步骤 2: 第1批任务
-    `# 角色：开发者 - 步骤 2/7：按 tasks.md 执行（第一批任务）
+    // 步骤 2: 执行所有任务
+    `# 角色：开发者 - 步骤 2/3：执行 tasks.md 中的所有任务
 
 ## 任务清单位置（必须读取）
 文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
 
-**重要**：tasks.md 中的任务是 Markdown 复选框格式，如：
-- [ ] 1.1 创建项目目录结构
-- [ ] 1.2 初始化前端 package.json
-- [ ] 2.1 配置 Drizzle ORM
-
-请按顺序执行这些任务，每完成一个就用 Write 工具写代码到：
-/Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+**注意**：tasks.md 中的任务是 Markdown 格式，从 1.1 开始到 16.x（共 125 个任务）。请从 1.1 开始，**按顺序执行每一个任务**，直到全部完成。
 
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-6c609466
+- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-181d30b6
 - 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
 
 ## 你的任务
-首先读取 tasks.md 文件，然后按顺序执行任务。从第一个任务开始，一直执行到完成所有任务。
+1. 首先读取 tasks.md 文件
+2. 从第一个任务（1.1）开始，依次执行每一个任务
+3. 每完成一个任务就用 Write 工具把代码写入：
+   /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
 
 ### ⚠️ 强制要求（必须遵守）
-- **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
-- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+- **必须使用 Write 工具将代码写入文件**
+- **不要只输出到控制台，必须实际写入文件**
+- 任务格式是 "1.1 创建项目目录结构"，对应输出 "[任务1.1] 完成: 创建项目目录结构"
 - 直接执行任务，不要询问是否可以继续
 
 ## 输出
 每完成一个任务输出 "[任务X.X] 完成: 任务描述"
-完成后继续下一步
+全部完成后进入步骤 3 生成文档
 `,
     // 步骤 3: 第2批任务 (11-20)
     `# 角色：开发者 - 步骤 3/7：按 tasks.md 执行（第2批: 任务 11-20）
@@ -1370,8 +1368,8 @@ ${rawInput}
     return stepPrompts[stepIndex];
   }
 
-  // 默认返回完整 prompt（第6步）
-  return stepPrompts[5];
+  // 默认返回完整 prompt（步骤 2: 执行任务）
+  return stepPrompts[1];
 }
 
 /**
