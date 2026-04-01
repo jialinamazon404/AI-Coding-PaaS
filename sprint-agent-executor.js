@@ -168,16 +168,16 @@ const ROLE_STEP_SKILLS = {
 
 // Agent 模型配置 - 使用实际可用的模型
 const AGENT_MODELS = {
-  ba: 'opencode/big-pickle',
-  product: 'opencode/qwen3.6-plus',
-  architect: 'opencode/qwen3.6-plus',
-  tech_coach: 'opencode/qwen3.6-plus',
-  developer: 'opencode/gpt-5-nano',
-  tester: 'opencode/qwen3.6-plus',
-  ops: 'opencode/gpt-5-nano',
-  evolver: 'opencode/gpt-5-nano',
-  ghost: 'opencode/big-pickle',
-  creative: 'opencode/big-pickle'
+  ba: 'big-pickle',
+  product: 'qwen3.6-plus',
+  architect: 'qwen3.6-plus',
+  tech_coach: 'qwen3.6-plus',
+  developer: 'gpt-5-nano',
+  tester: 'qwen3.6-plus',
+  ops: 'gpt-5-nano',
+  evolver: 'gpt-5-nano',
+  ghost: 'big-pickle',
+  creative: 'big-pickle'
 };
 
 // 超时配置 (毫秒)

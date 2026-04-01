@@ -735,15 +735,15 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
     } catch (e) {
       // 使用默认模型配置
       modelConfig = {
-        ba: 'opencode/big-pickle',
-        product: 'opencode/big-pickle',
-        architect: 'opencode/big-pickle',
-        developer: 'opencode/big-pickle',
-        tester: 'opencode/big-pickle',
-        ops: 'opencode/gpt-5-nano',
-        evolver: 'opencode/gpt-5-nano',
-        ghost: 'opencode/big-pickle',
-        creative: 'opencode/big-pickle'
+        ba: 'big-pickle',
+        product: 'qwen3.6-plus',
+        architect: 'qwen3.6-plus',
+        developer: 'gpt-5-nano',
+        tester: 'qwen3.6-plus',
+        ops: 'gpt-5-nano',
+        evolver: 'gpt-5-nano',
+        ghost: 'big-pickle',
+        creative: 'big-pickle'
       }
     }
 
@@ -1168,15 +1168,15 @@ app.get('/api/config/models', async (req, res) => {
   } catch (e) {
     // 返回默认配置
     res.json({
-      ba: 'opencode/big-pickle',
-      product: 'opencode/big-pickle',
-      architect: 'opencode/big-pickle',
-      developer: 'opencode/big-pickle',
-      tester: 'opencode/big-pickle',
-      ops: 'opencode/gpt-5-nano',
-      evolver: 'opencode/gpt-5-nano',
-      ghost: 'opencode/big-pickle',
-      creative: 'opencode/big-pickle'
+      ba: 'big-pickle',
+      product: 'qwen3.6-plus',
+      architect: 'qwen3.6-plus',
+      developer: 'gpt-5-nano',
+      tester: 'qwen3.6-plus',
+      ops: 'gpt-5-nano',
+      evolver: 'gpt-5-nano',
+      ghost: 'big-pickle',
+      creative: 'big-pickle'
     });
   }
 });
