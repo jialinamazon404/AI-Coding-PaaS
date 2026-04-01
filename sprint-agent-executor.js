@@ -166,18 +166,18 @@ const ROLE_STEP_SKILLS = {
   ]
 };
 
-// Agent 模型配置 - 使用实际可用的模型
+// Agent 模型配置 - 使用实际可用的模型名称
 const AGENT_MODELS = {
-  ba: 'big-pickle',
-  product: 'qwen3.6-plus',
-  architect: 'qwen3.6-plus',
-  tech_coach: 'qwen3.6-plus',
-  developer: 'gpt-5-nano',
-  tester: 'qwen3.6-plus',
-  ops: 'gpt-5-nano',
-  evolver: 'gpt-5-nano',
-  ghost: 'big-pickle',
-  creative: 'big-pickle'
+  ba: 'opencode/big-pickle',
+  product: 'opencode/qwen3.6-plus-free',
+  architect: 'opencode/qwen3.6-plus-free',
+  tech_coach: 'opencode/qwen3.6-plus-free',
+  developer: 'opencode/gpt-5-nano',
+  tester: 'opencode/qwen3.6-plus-free',
+  ops: 'opencode/gpt-5-nano',
+  evolver: 'opencode/gpt-5-nano',
+  ghost: 'opencode/big-pickle',
+  creative: 'opencode/big-pickle'
 };
 
 // 超时配置 (毫秒)
@@ -945,10 +945,10 @@ openspec status --change "<feature-name>"
 - 包含 proposal.md, design.md, tasks.md 等标准 artifacts
 - 确保 \`openspec status\` 显示所有 applyRequires artifacts 为 done 状态
 
-## 项目目录初始化
-完成 OpenSpec change 后，创建项目代码目录结构（如果不存在）：
+## 项目目录初始化（必须执行）
+完成 OpenSpec change 后，**必须**使用 Bash mkdir 命令创建项目代码目录结构：
 
-\`\`\`
+```
 ${projectPath || `projects/${pipelineId}`}/src/
 ├── backend/
 │   ├── src/
@@ -966,9 +966,15 @@ ${projectPath || `projects/${pipelineId}`}/src/
     │   ├── api/
     │   └── store/
     └── package.json
-\`\`\`
+```
 
-使用 Bash mkdir 命令创建目录结构。
+**必须执行以下 Bash 命令创建目录**:
+```bash
+mkdir -p ${projectPath || `projects/${pipelineId}`}/src/backend/src/{routes,models,middleware,utils,data}
+mkdir -p ${projectPath || `projects/${pipelineId}`}/src/frontend/src/{pages,components,api,store}
+```
+
+然后继续 OpenSpec 步骤。
 ` : '';
 
   const openSpecFallback = stepIndex === 4 ? `
@@ -1159,14 +1165,14 @@ ${specContext}
 ${techContext}
 
 ## 工作目录
-- 执行记录: ${wsPath}
-- 代码目录: ${projectDir}
+- 执行记录: workspace/${pipelineId}
+- 代码目录: projects/${pipelineId}/src
 
 ## 你的任务
 ### 执行前准备
 首先创建目录结构（如果不存在）：
 '''
-CODE_DIR_PLACEHOLDER
+projects/${pipelineId}/src/
 ├── backend/
 │   └── src/
 │       ├── routes/
@@ -1184,12 +1190,12 @@ CODE_DIR_PLACEHOLDER
 
 ### 然后确认实现范围
 1. 读取 OpenSpec Change Proposal:
-   - \`${wsPath}/../openspec/changes/*/proposal.md\` (需求背景)
-   - \`${wsPath}/../openspec/changes/*/design.md\` (技术设计)
-   - \`${wsPath}/../openspec/changes/*/tasks.md\` (任务清单 - **关键**)
+   - \`projects/${pipelineId}/openspec/changes/*/proposal.md\` (需求背景)
+   - \`projects/${pipelineId}/openspec/changes/*/design.md\` (技术设计)
+   - \`projects/${pipelineId}/openspec/changes/*/tasks.md\` (任务清单 - **关键**)
 
 2. 检查现有代码（如有）:
-   - \`${projectDir}/\`
+   - \`projects/${pipelineId}/src/\`
 
 3. 确认本次实现范围，列出需要实现的任务列表
 

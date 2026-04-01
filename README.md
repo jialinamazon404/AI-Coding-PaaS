@@ -239,7 +239,7 @@ Architect   Tester → Ops
 | 层级 | 技术 |
 |------|------|
 | 编排层 | OpenCode CLI |
-| 模型 | `opencode/qwen3.6-plus`, `opencode/big-pickle`, `opencode/gpt-5-nano` |
+| 模型 | `opencode/qwen3.6-plus-free`, `opencode/big-pickle`, `opencode/gpt-5-nano` |
 | Skills | Superpowers Skills + gstack Skills + OpenSpec |
 | 前端 | Vue 3 + Vite + Tailwind CSS + Pinia + Vue Router |
 | 后端 | Express.js + Socket.io |
@@ -593,9 +593,9 @@ DevForge/
 
 ```json
 {
-  "product": "opencode/qwen3.6-plus",
-  "architect": "opencode/qwen3.6-plus",
-  "developer": "opencode/qwen3.6-plus",
+  "product": "opencode/qwen3.6-plus-free",
+  "architect": "opencode/qwen3.6-plus-free",
+  "developer": "opencode/gpt-5-nano",
   "ops": "opencode/gpt-5-nano"
 }
 ```
