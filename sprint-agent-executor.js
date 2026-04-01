@@ -172,7 +172,7 @@ const AGENT_MODELS = {
   product: 'opencode/qwen3.6-plus',
   architect: 'opencode/qwen3.6-plus',
   tech_coach: 'opencode/qwen3.6-plus',
-  developer: 'opencode/qwen3.6-plus',
+  developer: 'opencode/gpt-5-nano',
   tester: 'opencode/qwen3.6-plus',
   ops: 'opencode/gpt-5-nano',
   evolver: 'opencode/gpt-5-nano',
@@ -2037,8 +2037,8 @@ async function main() {
   const args = process.argv.slice(2);
   const sprintId = args[0];
   const roleIndex = args[1] ? parseInt(args[1]) : null;
-  const customModel = args[2]; // 可选的模型参数
-  const stepIndex = args[3] !== undefined ? parseInt(args[3]) : null;
+  const customModel = args[3] || null; // args[3] 是 model 参数
+  const stepIndex = args[4] !== undefined ? parseInt(args[4]) : null;
   
   if (!sprintId) {
     console.log(`
