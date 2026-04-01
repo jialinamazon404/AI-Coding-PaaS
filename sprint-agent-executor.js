@@ -944,6 +944,31 @@ openspec status --change "<feature-name>"
 - OpenSpec change 目录: \`${projectPath || `projects/${pipelineId}`}/openspec/changes/<feature-name>/\`
 - 包含 proposal.md, design.md, tasks.md 等标准 artifacts
 - 确保 \`openspec status\` 显示所有 applyRequires artifacts 为 done 状态
+
+## 项目目录初始化
+完成 OpenSpec change 后，创建项目代码目录结构（如果不存在）：
+
+\`\`\`
+${projectPath || `projects/${pipelineId}`}/src/
+├── backend/
+│   ├── src/
+│   │   ├── routes/
+│   │   ├── models/
+│   │   ├── middleware/
+│   │   ├── utils/
+│   │   └── data/
+│   ├── package.json
+│   └── tsconfig.json
+└── frontend/
+    ├── src/
+    │   ├── pages/
+    │   ├── components/
+    │   ├── api/
+    │   └── store/
+    └── package.json
+\`\`\`
+
+使用 Bash mkdir 命令创建目录结构。
 ` : '';
 
   const openSpecFallback = stepIndex === 4 ? `
