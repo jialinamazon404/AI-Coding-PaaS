@@ -939,18 +939,37 @@ ${step3Output}
   
   const openSpecInit = isLastStep ? `
 ### 1. 初始化 OpenSpec 环境（如果项目还没有 OpenSpec）
-切换到项目目录: cd ${projectPath}
-检查是否存在 openspec/spec.json 或 openspec/ 目录：
-- 如果不存在: openspec init --tools opencode --no-color
+
+**重要：必须先切换到项目目录再执行命令**
+
+首先执行 Bash 命令切换目录：
+\`\`\`bash
+cd ${projectPath}
+pwd
+\`\`\`
+
+然后检查是否存在 openspec/spec.json 或 openspec/ 目录：
+- 如果不存在: 执行 \`openspec init --tools opencode --no-color\`
 - 如果已存在: 跳过此步骤
 ` : '';
 
   const openSpecCreate = isLastStep ? `
 ### 2. 创建 change proposal
-切换到项目目录: cd ${projectPath}
+
+**重要：必须先切换到项目目录再执行命令**
+
+首先执行 Bash 命令切换目录：
+\`\`\`bash
+cd ${projectPath}
+\`\`\`
+
 基于 PRD 和前 3 步的架构设计，创建 change：
-bash
+\`\`\`bash
 openspec new change "<feature-name>" --description "<一句话描述>"
+\`\`\`
+
+feature-name 格式: sprint-N-short-desc（如 "sprint-1-user-auth", "sprint-2-payment"）
+description 简要描述本次迭代内容。
 
 feature-name 格式: sprint-N-short-desc（如 "sprint-1-user-auth", "sprint-2-payment"）
 description 简要描述本次迭代内容。
@@ -1258,7 +1277,7 @@ ${typeof techCoachOutput === 'string' ? techCoachOutput.slice(0, 5000) : JSON.st
   const wsPath = workspacePath || `workspace/${pipelineId}`;
   
   const stepPrompts = [
-    `# 角色：开发者 - 步骤 1/3：范围确认
+    `# 角色：开发者 - 步骤 1/7：范围确认
 
 ## 用户需求
 ${rawInput}
@@ -1266,14 +1285,15 @@ ${specContext}
 ${techContext}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-840bbe5f
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
+- OpenSpec 目录: ${openspecChangeDir || projectPath + '/openspec/changes/'}
 
 ## 你的任务
 ### 执行前准备
 首先创建目录结构（如果不存在）：
-'''
-projects/${pipelineId}/src/
+\`\`\`
+${projectDir}/
 ├── backend/
 │   └── src/
 │       ├── routes/
@@ -1287,23 +1307,23 @@ projects/${pipelineId}/src/
         ├── components/
         ├── api/
         └── store/
-'''
+\`\`\`
 
 ### 然后确认实现范围
 **首先必须读取任务清单文件**，这是开发的核心依据：
 
 1. 读取 tasks.md（任务清单 - **必须首先读取**）:
-   文件位置: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+   \${openspecChangeDir || projectPath + '/openspec/changes/'}/tasks.md
    读取后列出所有任务项。
 
 2. 读取 design.md（技术设计）:
-   /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/design.md
+   \${openspecChangeDir || projectPath + '/openspec/changes/'}/design.md
 
 3. 读取 proposal.md（需求背景）:
-   /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/proposal.md
+   \${openspecChangeDir || projectPath + '/openspec/changes/'}/proposal.md
 
 4. 检查现有代码（如有）:
-   - /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+   - ${projectDir}/
 
 3. 确认本次实现范围，列出需要实现的任务列表
 
@@ -1315,26 +1335,25 @@ projects/${pipelineId}/src/
 ## 输出
 确认范围后直接输出任务列表到控制台，然后开始执行 Step 2
 `,
-    // 步骤 2: 执行所有任务
-    `# 角色：开发者 - 步骤 2/3：执行 tasks.md 中的所有任务
+    // 步骤 2: 执行任务 1-10
+    `# 角色：开发者 - 步骤 2/7：按 tasks.md 执行（任务 1-10）
 
 ## 任务清单位置（必须读取）
-文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+\${openspecChangeDir || projectPath + '/openspec/changes/'}/tasks.md
 
-**注意**：tasks.md 中的任务是 Markdown 格式，从 1.1 开始到 16.x（共 125 个任务）。请从 1.1 开始，**按顺序执行每一个任务**，直到全部完成。
+**注意**：tasks.md 中的任务是 Markdown 格式，从 1.1 开始。请从 1.1 开始，**按顺序执行每一个任务**，直到 1.10 结束。
 
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-181d30b6
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
 
 ## 你的任务
 1. 首先读取 tasks.md 文件
-2. 从第一个任务（1.1）开始，依次执行每一个任务
-3. 每完成一个任务就用 Write 工具把代码写入：
-   /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+2. 从第一个任务（1.1）开始，依次执行任务 1.1 到 1.10
+3. 每完成一个任务就用 Write 工具把代码写入: ${projectDir}/
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须使用 Write 工具将代码写入文件**
@@ -1344,96 +1363,103 @@ ${rawInput}
 
 ## 输出
 每完成一个任务输出 "[任务X.X] 完成: 任务描述"
-全部完成后进入步骤 3 生成文档
+全部完成后继续执行步骤 3
 `,
-    // 步骤 3: 第2批任务 (11-20)
-    `# 角色：开发者 - 步骤 3/7：按 tasks.md 执行（第2批: 任务 11-20）
+    // 步骤 3: 执行任务 11-20
+    `# 角色：开发者 - 步骤 3/7：按 tasks.md 执行（任务 11-20）
 
 ## 任务清单位置
-文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+\${openspecChangeDir || projectPath + '/openspec/changes/'}/tasks.md
 
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
 
 ## 你的任务
 继续执行任务 11-20。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
-- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+- 代码保存路径: ${projectDir}/
 
 ## 输出
 每完成一个任务输出 "[任务X.X] 完成: 任务描述"
-完成后继续执行剩余任务，直到全部完成
+完成后继续执行步骤 4
 `,
-    // 步骤 4-7: 继续执行任务（合并为一步）
-    `# 角色：开发者 - 步骤 3-7：按 tasks.md 继续执行
+    // 步骤 4: 执行任务 21-30
+    `# 角色：开发者 - 步骤 4/7：按 tasks.md 执行（任务 21-30）
 
 ## 任务清单位置
-文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+\${openspecChangeDir || projectPath + '/openspec/changes/'}/tasks.md
 
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-6c609466
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
 
 ## 你的任务
-继续执行剩余任务，从上一步暂停的地方继续，一直执行到 tasks.md 中所有任务完成。
+继续执行任务 21-30。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
-- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+- 代码保存路径: ${projectDir}/
 
 ## 输出
 每完成一个任务输出 "[任务X.X] 完成: 任务描述"
-全部完成后进入 Step 7 生成文档
+完成后继续执行步骤 5
 `,
-    // 步骤 7: 开发文档
-    `# 角色：开发者 - 步骤 7/7：开发文档
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+    // 步骤 5: 执行任务 31-40
+    `# 角色：开发者 - 步骤 5/7：按 tasks.md 执行（任务 31-40）
+
+## 任务清单位置
+\${openspecChangeDir || projectPath + '/openspec/changes/'}/tasks.md
+
+## 用户需求
+${rawInput}
+
+## 工作目录
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
 
 ## 你的任务
 继续执行任务 31-40。
 
 ### ⚠️ 强制要求（必须遵守）
-- **必须使用 Write 工具将代码写入文件**
-- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
+- **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
+- 代码保存路径: ${projectDir}/
 
 ## 输出
-每次任务完成输出 "[任务X] 完成: 任务描述"
-完成后继续下一步
+每完成一个任务输出 "[任务X.X] 完成: 任务描述"
+完成后继续执行步骤 6
 `,
-    // 步骤 6: 第5批任务 (41-50 + 剩余)
-    `# 角色：开发者 - 步骤 6/7：按 tasks.md 执行（第5批: 任务 41-50 + 剩余）
+    // 步骤 6: 执行剩余任务 41+
+    `# 角色：开发者 - 步骤 6/7：按 tasks.md 执行（任务 41+）
 
 ## 任务清单位置
-文件: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/openspec/changes/sprint-1-admin-system/tasks.md
+\${openspecChangeDir || projectPath + '/openspec/changes/'}/tasks.md
 
 ## 用户需求
 ${rawInput}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
 
 ## 你的任务
-继续执行任务 41-50，然后检查是否还有剩余任务，如有则继续执行直到全部完成。
+继续执行任务 41+，然后检查是否还有剩余任务，如有则继续执行直到全部完成。
 
 ### ⚠️ 强制要求（必须遵守）
-- **必须使用 Write 工具将代码写入文件**
-- 代码保存路径: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/
-- 任务全部完成后继续执行 Step 7（生成文档）
+- **必须使用 Write 工具将代码写入文件，不要只输出到控制台**
+- 代码保存路径: ${projectDir}/
 
 ## 输出
-每次任务完成输出 "[任务X] 完成: 任务描述"
-完成后继续执行 Step 7（生成文档）
+每完成一个任务输出 "[任务X.X] 完成: 任务描述"
+全部完成后继续执行步骤 7（生成文档）
 `,
     // 步骤 7: 开发文档
     `# 角色：开发者 - 步骤 7/7：开发文档
@@ -1442,15 +1468,15 @@ ${rawInput}
 ${rawInput}
 
 ## 工作目录
-- 执行记录: /Users/jialin.chen/WorkSpace/DevForge/workspace/0409e4e9-87aa-4113-8416-0373a52dab10-fd36c19d
-- 代码目录: /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src
+- 执行记录: ${wsPath}
+- 代码目录: ${projectDir}
 
 ## 你的任务
 生成开发文档（**必须使用 Write 工具写入文件**）：
 
-1. /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/README.md - 项目运行说明
-2. /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/API.md - 接口文档
-3. /Users/jialin.chen/WorkSpace/DevForge/projects/0409e4e9-87aa-4113-8416-0373a52dab10/src/dev-summary.md - 开发摘要
+1. ${projectDir}/README.md - 项目运行说明
+2. ${projectDir}/API.md - 接口文档
+3. ${projectDir}/dev-summary.md - 开发摘要
 
 ## ⚠️ 强制要求
 - **必须使用 Write 工具将文档写入文件**
@@ -1939,7 +1965,7 @@ const ROLE_STEPS = {
   product: 5,
   architect: 5,
   tech_coach: 2,   // 步骤1: 信息收集(product/) + 步骤2: 技术实现
-  developer: 3,   // 范围确认 + tasks执行 + 开发文档
+  developer: 7,   // 步骤1: 范围确认 + 步骤2-6: tasks执行 + 步骤7: 开发文档
   tester: 4,
   ops: 4
 };
