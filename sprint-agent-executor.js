@@ -283,7 +283,7 @@ function generateTechCoachPrompt(context) {
 ${rawInput}
 
 ## 你的任务
-读取 product/ 目录下所有产品输出文件，为下一步生成技术实现文档做准备。
+读取 product/ 目录下所有产品输出文件，为下一步生成技术能力需求做准备。
 
 ### 读取文件
 请读取以下文件：
@@ -297,35 +297,69 @@ ${productFiles.map(f => `- ${wsPath}/${f}`).join('\n')}
 无需生成文件，只需读取并理解产品需求
 `;
   } else {
-    // 步骤 2: 技术实现
+    // 步骤 2: 技术能力需求（不是技术选型！）
     return `# 角色：开发教练 (Tech Coach) - 步骤 2/2
 
 ## 原始需求
 ${rawInput}
 
-## 你的任务
-基于 product/ 目录下的产品文档，生成技术实现文档。
+## ⚠️ 核心原则
+**你只描述"需要什么技术能力"，不决策"用什么具体技术"。**
+技术选型是架构师的职责！
 
-### 读取文件
+### 输出句式规则
+- ✅ 正确：需要（P0）：关系型数据库能力
+- ✅ 正确：需要（P1）：JWT 认证能力
+- ❌ 错误：推荐：使用 PostgreSQL + Prisma
+- ❌ 错误：选择：Express + React 技术栈
+
+## 读取文件
 请先读取：
 - ${wsPath}/product/prd.md - PRD 文档
-- ${wsPath}/product/user-stories.md - 用户故事
-- ${wsPath}/product/functional-requirements.md - 功能需求
-- ${wsPath}/product/ui-layout.md - 界面布局
-- ${wsPath}/product/user-journey.md - 用户旅程
+- ${wsPath}/product/user-stories.md - 用户故事（带优先级）
+- ${wsPath}/product/functional-requirements.md - 功能需求（带优先级）
+- ${wsPath}/product/ui-layout.md - 界面布局（如有）
 
-### 生成技术实现文档
-输出以下文件：
+## 你的任务
+基于产品文档，分析并输出技术能力需求。
 
-1. ${wsPath}/tech-coach/tech-implementation.md - 技术实现文档（前后端分离）
-   - 前端：组件结构、页面路由、状态管理、API调用封装
-   - 后端：API清单、数据库实现、业务逻辑、认证权限
+### 优先级说明
+- **P0**：核心功能，必须实现，影响技术选型
+- **P1**：重要功能，影响架构设计
+- **P2**：扩展功能，可以后期添加
 
-2. ${wsPath}/output/user-stories.md - 开发用用户故事
+### 输出格式
+\`\`\`markdown
+# 技术能力需求
 
-3. ${wsPath}/output/tech-feasibility.md - 技术可行性分析
-   - 风险点识别
-   - 实现难点评估
+## P0 核心能力需求（直接影响技术选型）
+列出实现 P0 功能必须的技术能力。
+
+## P1 重要能力需求（影响架构设计）
+列出实现 P1 功能需要的技术能力。
+
+## P2 扩展能力需求（可以后期添加）
+列出实现 P2 功能需要的技术能力（如有）。
+
+## 技术风险点（按优先级标记）
+| 优先级 | 风险描述 | 建议 |
+|--------|----------|------|
+| P0 | 描述 | 建议 |
+
+## 实现难点评估（按优先级标记）
+| 优先级 | 难点描述 | 评估 |
+|--------|----------|------|
+| P0 | 描述 | 高/中/低 |
+\`\`\`
+
+## ⚠️ 强制要求
+- 必须使用 Write 工具将内容写入文件
+- 只写"需要什么能力"，不写"用什么技术"
+- 能力需求必须带优先级（P0/P1/P2）
+- 风险点和难点也必须带优先级
+
+## 输出文件
+${wsPath}/tech-coach/tech-implementation.md - 技术能力需求（必须）
 `;
   }
 }
@@ -825,10 +859,11 @@ function getStepGuidance(role, stepIndex) {
       '## 步骤 5/5: 汇总生成PRD\n整合所有产出，生成完整的PRD文档。输出到 product/prd.json, product/prd.md'
     ],
     architect: [
-      '## 步骤 1/4: 系统架构设计\n专注于设计系统架构图、技术栈选型、组件划分。输出到 output/architect-step1.md',
-      '## 步骤 2/4: API 接口设计\n基于架构设计 RESTful API 规范。输出到 output/architect-step2.md',
-      '## 步骤 3/4: 数据库模型设计\n设计数据库表结构和关系。输出到 output/architect-step3.md',
-      '## 步骤 4/4: OpenSpec Change Proposal\n使用 OpenSpec CLI 创建规范的 change proposal。执行: openspec init --tools opencode, openspec new change "<name>", openspec instructions, openspec validate'
+      '## 步骤 1/5: 系统架构设计\n读取 tech-priority.md，根据能力需求优先级选择技术。输出到 architect/architecture.md',
+      '## 步骤 2/5: API 接口设计\n基于架构设计 RESTful API 规范。输出到 architect/api-design.md',
+      '## 步骤 3/5: 数据库模型设计\n设计数据库表结构和关系。输出到 architect/database.md',
+      '## 步骤 4/5: 业务数据流转图\n绘制 Mermaid 业务数据流转图。输出到 architect/data-flow.md',
+      '## 步骤 5/5: OpenSpec Change Proposal\n使用 OpenSpec CLI 创建规范的 change proposal'
     ],
     developer: [
       '## 步骤 1/7: 范围确认\n读取 OpenSpec change (proposal.md, design.md, tasks.md) + 现有代码，确认实现范围和任务列表',
@@ -1011,18 +1046,41 @@ ${rawInput}
 ## 工作目录
 ${workspacePath}
 
-## 你的任务
-基于 tech-implementation.md 设计系统架构。
-
 ## 输入
-请先读取：
-- ${workspacePath}/tech-coach/tech-implementation.md - 技术实现文档
+请先读取以下文件：
+1. ${workspacePath}/tech-coach/tech-implementation.md - 技术能力需求（带 P0/P1/P2 优先级）
+2. ${workspacePath}/../agents/tech-priority.md - 技术选型优先级参考文档
+
+## ⚠️ 重要：技术选型必须遵循 tech-priority.md
+
+**这是架构师的核心职责：根据能力需求的优先级，按照技术优先级文档选择最合适的技术。**
+
+### 技术优先级原则
+- **P0 能力** → 选择 tech-priority.md 中 P0 优先级的技术（最稳定、最成熟）
+- **P1 能力** → 选择 tech-priority.md 中 P1 优先级的技术（功能完善）
+- **P2 能力** → 选择 tech-priority.md 中 P2 优先级的技术（轻量、简单）
+
+### 典型选型参考
+| 能力优先级 | 后端框架 | 数据库 | 认证 |
+|-----------|----------|--------|------|
+| P0 | Java + Spring Boot | MySQL | JWT + Spring Security |
+| P1 | Node.js + Express | PostgreSQL | Passport.js |
+| P2 | Python + FastAPI | SQLite | 简单 Token |
+
+## 你的任务
+基于 tech-implementation.md 的能力需求 + tech-priority.md 的优先级指导，设计系统架构。
 
 ## 输出要求
 1. 系统架构图（使用 Mermaid）
-2. 技术选型及理由
-3. 组件列表和职责
-4. 数据流设计
+2. **技术选型决策**（必须基于 tech-priority.md）
+3. 选型理由（引用 tech-priority.md 中的优先级说明）
+4. 组件列表和职责
+5. 数据流设计
+
+## ⚠️ 强制要求
+- 必须使用 Write 工具将架构设计写入文件
+- 技术选型必须说明理由，引用 tech-priority.md
+- **不要凭空选择技术，必须遵循 tech-priority.md 的优先级**
 
 保存到: ${workspacePath}/architect/architecture.md
 `,
@@ -1034,24 +1092,24 @@ ${rawInput}
 ## 工作目录
 ${workspacePath}
 
-## 你的任务
-基于 tech-implementation.md + 系统设计，设计 RESTful API 接口规范。
-
 ## 输入
 请先读取：
-- ${workspacePath}/tech-coach/tech-implementation.md - 技术实现文档
-- ${workspacePath}/architect/architecture.md - 系统架构
+- ${workspacePath}/tech-coach/tech-implementation.md - 技术能力需求
+- ${workspacePath}/architect/architecture.md - 系统架构（包含技术选型）
+- ${workspacePath}/product/functional-requirements.md - 功能需求（包含优先级）
+- ${workspacePath}/product/user-stories.md - 用户故事
+
+## 你的任务
+基于架构设计和技术选型，设计 API 接口规范。
+
+## ⚠️ 核心原则
+**根据功能需求自主识别需要哪些 API 模块**，不要预设固定的模块列表。
 
 ## 输出要求
-设计以下模块的 API 接口：
-1. 认证模块 (auth) - 登录、登出、刷新 Token
-2. 店员模块 (staff) - CRUD、密码重置
-3. 权限模块 (permission/role) - 角色 CRUD、权限分配
-4. 商品模块 (product) - CRUD、上下架
-5. 订单模块 (order) - CRUD、状态更新
-6. 店铺模块 (shop) - CRUD
-
-每个 API 需要包含：方法、路径、说明、请求参数、响应格式
+基于读取的功能需求，设计 API 接口：
+- 从功能需求中识别需要的业务模块
+- 每个 API 包含：方法、路径、说明、请求参数、响应格式
+- 标注 API 对应的功能优先级（P0/P1/P2）
 
 ## ⚠️ 强制要求
 **必须使用 Write 工具将 API 设计写入文件**：
