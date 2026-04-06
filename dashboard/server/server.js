@@ -8,9 +8,22 @@ import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import os from 'os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = '/Users/jialin.chen/WorkSpace/DevForge';
+
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return '127.0.0.1';
+}
 
 // 配置路径 - 新结构 projects/{projectId}/sprints/{sprintId}/
 const PROJECTS_DIR = path.join(ROOT, 'projects');
@@ -1424,14 +1437,15 @@ async function start() {
   
   const PORT = process.env.PORT || 3000;
   const HOST = process.env.HOST || '0.0.0.0';
+  const localIP = getLocalIP();
   httpServer.listen(PORT, HOST, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║          Moby Dick API Server                      ║
+║          AI Coding PasS API Server                    ║
 ║                                                           ║
+║  HTTP:      http://${localIP}:${PORT}                         ║
 ║  HTTP:      http://localhost:${PORT}                         ║
-║  HTTP:      http://${HOST === '0.0.0.0' ? '0.0.0.0' : HOST}:${PORT}                         ║
-║  WebSocket: ws://localhost:${PORT}                           ║
+║  WebSocket: ws://${localIP}:${PORT}                           ║
 ║                                                           ║
 ║  Endpoints:                                              ║
 ║  - POST   /api/projects           Create project          ║

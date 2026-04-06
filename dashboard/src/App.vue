@@ -13,7 +13,7 @@
               <div class="w-8 h-8 bg-gradient-to-br from-vue-primary to-vue-secondary rounded-lg flex items-center justify-center glow-green">
                 <span class="text-white font-bold text-sm">AI</span>
               </div>
-              <h1 class="text-lg font-semibold gradient-text">Moby Dick</h1>
+              <h1 class="text-lg font-semibold gradient-text">AI Coding PasS</h1>
             </div>
             <nav class="flex space-x-1 ml-6">
               <button 

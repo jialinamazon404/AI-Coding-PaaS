@@ -12,6 +12,7 @@
 
 - [项目简介](#项目简介)
 - [核心特性](#核心特性)
+- [OpenSpec 集成](#openspec-集成)
 - [前置要求](#前置要求)
 - [快速开始](#快速开始)
 - [环境变量](#环境变量)
@@ -34,7 +35,7 @@
 
 ## 项目简介
 
-DevForge（代号 "Moby Dick"）是一个**多角色 AI 软件开发团队编排系统**。它将传统软件开发团队中的角色（产品经理、架构师、开发者、测试工程师、运维工程师等）抽象为独立的 AI Agent，通过结构化流水线协同完成从需求分析到部署上线的完整软件交付流程。
+DevForge（代号 "AI Coding PasS"）是一个**多角色 AI 软件开发团队编排系统**。它将传统软件开发团队中的角色（产品经理、架构师、开发者、测试工程师、运维工程师等）抽象为独立的 AI Agent，通过结构化流水线协同完成从需求分析到部署上线的完整软件交付流程。
 
 ### 解决什么问题
 
@@ -63,6 +64,98 @@ DevForge（代号 "Moby Dick"）是一个**多角色 AI 软件开发团队编排
 - **双数据模型**：支持 Pipeline（旧版）和 Sprint（新版）两种执行模式
 - **模型灵活配置**：每个角色可独立配置 AI 模型，通过 `model-config.json` 管理
 - **多执行器**：提供 CLI、API、Sprint 三种执行方式，适配不同使用场景
+- **OpenSpec 集成**：结构化规范管理，Architect → Developer 无缝衔接
+
+---
+
+## OpenSpec 集成
+
+### 什么是 OpenSpec
+
+OpenSpec 是 Fission AI 开发的规范管理工具，为每个功能变更（Change）提供标准化的产出物结构。它是 **Architect → Developer** 的核心桥梁。
+
+### 工作流
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Architect (6 步骤)                          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
+│  │proposal  │→│ design   │→│database  │→│ tasks    │          │
+│  │  .md     │ │  .md     │ │  .md     │ │  .md     │          │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
+│                                                              ↓   │
+│                                    projects/{projectId}/openspec │
+│                                              /changes/{name}/   │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Developer (N 步骤，基于 tasks.md)              │
+│  ┌──────────┐ ┌──────────────────────────┐ ┌──────────┐        │
+│  │ Step 1   │→│ Step 2-N: 执行任务批次    │→│ 最后一步  │        │
+│  │ 读取文件  │ │ 读取 tasks.md，按批次执行  │ │ 生成文档  │        │
+│  │ 确认范围  │ │                          │ │          │        │
+│  └──────────┘ └──────────────────────────┘ └──────────┘        │
+└─────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       Tester (QA 测试)                           │
+│  验证 Developer 基于 OpenSpec 实现的代码质量                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Artifacts 说明
+
+| 文件 | 生成者 | 用途 |
+|------|--------|------|
+| `proposal.md` | Architect | 变更提案：需求背景、目标、范围 |
+| `design.md` | Architect | 技术设计：API 规范、数据模型、技术选型 |
+| `database.md` | Architect | 数据模型：数据库表结构、ER 图 |
+| `tasks.md` | Architect | **核心** - 实施任务清单，驱动 Developer 步骤数 |
+
+### Developer 如何消费 OpenSpec
+
+Developer 按以下顺序读取 OpenSpec artifacts：
+
+1. **tasks.md**（首先读取）
+   - 确认总任务数 → 决定执行步骤数（每 10 任务 = 1 批次）
+   - 按批次执行任务
+
+2. **design.md**（技术参考）
+   - API 设计规范
+   - 数据模型定义
+   - 技术选型决策
+
+3. **proposal.md**（需求背景）
+   - 变更目的
+   - 用户故事
+
+### CLI 依赖
+
+```bash
+npm install -g @fission-ai/openspec@latest
+```
+
+> **注意**：OpenSpec CLI 是可选的。CLI 不可用时，系统会自动降级为手动创建目录结构。
+
+### 目录结构
+
+```
+projects/{projectId}/
+├── openspec/
+│   ├── spec.json                    # OpenSpec 主配置
+│   └── changes/
+│       └── {sprint-name}/
+│           ├── proposal.md          # 变更提案
+│           ├── design.md            # 技术设计
+│           ├── database.md          # 数据模型
+│           └── tasks.md            # 实施任务（Developer 核心输入）
+└── src/                            # Developer 产出代码
+    ├── frontend/
+    ├── backend/
+    └── ...
+```
 
 ---
 
@@ -379,7 +472,7 @@ Architect   Tester → Ops
 | 角色 | 输出文件 |
 |------|---------|
 | Product | `output/prd.md`, `output/product-spec.md`, `output/user-stories.md`, `output/ui-layout.md`, `output/user-journey.md` |
-| Architect | `openspec/changes/<name>/` (proposal.md, design.md, tasks.md) |
+| Architect | `openspec/changes/<name>/` (proposal.md, design.md, database.md, tasks.md) |
 | Tech Coach | `tech-coach/tech-implementation.md`, `output/user-stories.md`, `output/tech-feasibility.md` |
 | Developer | `developer/README.md`, `developer/API.md`, `developer/dev-summary.md`, `developer/frontend/`, `developer/backend/` |
 | Tester | `output/test-report.md`, `output/security-report.md` |

@@ -2,7 +2,13 @@ import { defineStore } from 'pinia'
 import axios from 'axios'
 import { io } from 'socket.io-client'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+const getApiUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
+  // 获取本机 IP 用于局域网访问
+  const localIP = window.location.hostname
+  return `http://${localIP}:3000`
+}
+const API_URL = getApiUrl()
 
 export const useProjectStore = defineStore('project', {
   state: () => ({

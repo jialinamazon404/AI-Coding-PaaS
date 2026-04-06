@@ -69,17 +69,18 @@
             :class="getIterationClass(index, iteration)"
             @click="selectIteration(index)"
           >
-            <div class="w-10 h-10 rounded-full flex items-center justify-center mb-2"
-                 :class="getIterationIconBg(index, iteration)"
+<div class="w-10 h-10 rounded-full flex items-center justify-center mb-2"
+             :class="getIterationIconBg(index, iteration)"
             >
               <span v-if="iteration.status === 'confirmed'" class="text-white">✓</span>
-              <span v-else-if="iteration.status === 'completed'" class="text-white">✓</span>
+              <span v-else-if="iteration.status === 'completed' && isIterationFullyComplete" class="text-white">✓</span>
+              <span v-else-if="iteration.status === 'completed' && !isIterationFullyComplete" class="text-yellow-400">⏳</span>
               <span v-else-if="iteration.status === 'running' || iteration.status === 'waiting_input'" class="w-3 h-3 bg-white rounded-full animate-pulse"></span>
               <span v-else class="text-lg">{{ iteration.roleInfo?.icon || '🤖' }}</span>
             </div>
             <span class="text-sm font-medium text-white">{{ iteration.roleInfo?.name || iteration.role }}</span>
             <span class="text-xs mt-1" :class="getIterationStatusTextClass(iteration.status)">
-              {{ getIterationStatusText(iteration.status) }}
+              {{ getIterationStatusText(iteration.status, index === selectedIterationIndex ? isIterationFullyComplete : (iteration.status === 'completed')) }}
             </span>
           </div>
           
@@ -100,7 +101,7 @@
           <span class="text-2xl">{{ currentIteration?.roleInfo?.icon || '🤖' }}</span>
           <div>
             <h2 class="text-lg font-medium text-white">{{ currentIteration?.roleInfo?.name || '-' }}</h2>
-            <p class="text-gray-400 text-sm">{{ getIterationStatusText(currentIteration?.status) }}</p>
+            <p class="text-gray-400 text-sm">{{ getIterationStatusText(currentIteration?.status, isIterationFullyComplete) }}</p>
           </div>
         </div>
         <button @click="selectedIterationIndex = null" class="text-gray-400 hover:text-white">
@@ -645,7 +646,7 @@ async function loadExecutionLog() {
   
   try {
     const paddedIndex = String(prevRoleIndex + 1).padStart(2, '0')
-    const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:3000'
+    const baseUrl = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:3000`
     const response = await fetch(`${baseUrl}/api/sprints/${props.sprintId}/file?file=execution-log/${paddedIndex}-${role}.json`)
     if (response.ok) {
       const data = await response.json()
@@ -777,6 +778,13 @@ function setupSocketListeners() {
   store.socket.on('agent:progress', ({ message }) => {
     progressLog.value = message
   })
+  
+  // 监听文件创建事件，逐个消除 loading
+  store.socket.on('file:created', ({ filePath, fileName, sprintId }) => {
+    if (sprintId === props.sprintId) {
+      loadExistingFiles()  // 重新加载文件列表，更新 loading 状态
+    }
+  })
 }
 
 watch(() => props.sprintId, (newId) => {
@@ -785,8 +793,10 @@ watch(() => props.sprintId, (newId) => {
 
 // 监听当前 iteration 状态变化，自动刷新
 let pollTimer = null
+let filePollTimer = null
 watch(() => currentIteration.value?.status, (newStatus, oldStatus) => {
   if (newStatus === 'running' && oldStatus !== 'running') {
+    // 定期刷新 sprint 状态
     pollTimer = setInterval(async () => {
       await store.fetchSprint(props.sprintId)
       const iter = currentIteration.value
@@ -795,16 +805,26 @@ watch(() => currentIteration.value?.status, (newStatus, oldStatus) => {
         pollTimer = null
       }
     }, 1500)
+    
+    // 定期刷新文件列表（更快更新 loading 状态）
+    filePollTimer = setInterval(async () => {
+      await loadExistingFiles()
+    }, 1000)
   }
   if (newStatus !== 'running' && pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
+  }
+  if (newStatus !== 'running' && filePollTimer) {
+    clearInterval(filePollTimer)
+    filePollTimer = null
   }
 })
 
 // 组件卸载时清理
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (filePollTimer) clearInterval(filePollTimer)
 })
 
 function selectIteration(index) {
@@ -989,13 +1009,13 @@ function getIterationStatusTextClass(status) {
   return classes[status] || 'text-gray-500'
 }
 
-function getIterationStatusText(status) {
+function getIterationStatusText(status, isFullyComplete = true) {
   const texts = {
     pending: '待开始',
     waiting_input: '等待输入',
     ready: '准备执行',
     running: '执行中',
-    completed: '已完成',
+    completed: isFullyComplete ? '已完成' : '生成中',
     confirmed: '已确认',
     failed: '失败'
   }
@@ -1125,17 +1145,24 @@ const currentOutputFiles = computed(() => {
   const iterationStatus = currentIteration.value?.status
   if (!role || !outputFilesConfig[role]) return []
   
-  // 如果正在执行，显示所有文件为 loading 状态
+  const files = outputFilesConfig[role]
+  
+  // 如果正在执行，根据实际文件存在状态显示 loading
   if (iterationStatus === 'running') {
-    return outputFilesConfig[role].map(f => ({
-      ...f,
-      exists: false,
-      loading: true
-    }))
+    return files.map(f => {
+      const exists = f.category === 'dir'
+        ? existingFiles.value.some(ef => ef.path.startsWith(f.path))
+        : existingFiles.value.some(ef => ef.path === f.path)
+      return {
+        ...f,
+        exists,
+        loading: !exists  // 不存在的才显示 loading
+      }
+    })
   }
   
   // 正常状态：根据实际存在返回
-  return outputFilesConfig[role].map(f => {
+  return files.map(f => {
     const exists = f.category === 'dir'
       ? existingFiles.value.some(ef => ef.path.startsWith(f.path))
       : existingFiles.value.some(ef => ef.path === f.path)
@@ -1145,6 +1172,14 @@ const currentOutputFiles = computed(() => {
       loading: false
     }
   })
+})
+
+// 计算当前迭代是否真正完成（所有文件都已生成）
+const isIterationFullyComplete = computed(() => {
+  if (!currentIteration.value || currentIteration.value.status !== 'completed') return false
+  const files = currentOutputFiles.value
+  if (files.length === 0) return true
+  return files.every(f => f.exists)
 })
 
 // 当 sprint 刷新时重新加载文件
@@ -1214,7 +1249,7 @@ async function openPreview(file) {
   showPreview.value = true
 
   try {
-    const baseUrl = import.meta.env.VITE_API_BASE || 'http://localhost:3000'
+    const baseUrl = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:3000`
     const response = await fetch(`${baseUrl}/api/sprints/${props.sprintId}/file?file=${encodeURIComponent(file.path)}`)
     if (!response.ok) {
       const err = await response.json()

@@ -176,35 +176,39 @@
       "name": "开发教练",
       "name_en": "Tech Coach",
       "icon": "🔍",
-      "goal": "整合产品产出，生成 change-request，技术实现规划",
+      "goal": "整合产品产出，生成 change-request，提炼技术能力需求",
+      "principle": "只描述技术能力需求，不决策技术选型（技术选型是架构师职责）",
+      "thinking_constraint": "用『需要 + 能力』的句式，不用『选择/推荐 + 技术』的句式",
       "tools": ["read", "write", "glob", "grep"],
       "step_skills": {
         "0": null,
         "1": null
       },
       "steps": [
-        {"id": 1, "name": "信息收集", "prompt": "读取 product/ 下所有文件，生成 change-request.md（提炼需求 + 补充技术视角）"},
-        {"id": 2, "name": "技术实现", "prompt": "基于 change-request.md 输出技术实现文档、用户故事、可行性分析"}
+        {"id": 1, "name": "信息收集", "prompt": "读取 product/ 下所有文件，生成 change-request.md（提炼需求 + 技术能力需求）"},
+        {"id": 2, "name": "前后端分离方案", "prompt": "基于 change-request.md 输出前后端分离方案、用户故事、可行性分析"}
       ],
       "input": "PRD + 功能清单 + 界面布局 + 用户故事",
       "thinking_template": [
-        "1. 读取 product/ 下所有文件（prd.md, user-stories.md, functional-requirements.md, user-journey.md, ui-layout.md, user-personas.md）",
-        "2. 提炼产品需求，补充技术视角",
-        "3. 生成 change-request.md（整合需求 + 技术考量）",
-        "4. 基于 change-request.md 规划前端实现",
-        "5. 基于 change-request.md 规划后端实现",
-        "6. 技术可行性分析"
+        "1. 思考：这个需求需要什么技术能力？（先不要想用什么具体技术）",
+        "2. 用『需要 + 能力』的句式描述，不用『选择/推荐 + 技术』的句式",
+        "3. 技术选型是架构师的职责，我只负责分析需求",
+        "4. 读取 product/ 下所有文件",
+        "5. 提炼技术能力需求（认证、数据持久化、实时性、第三方集成等）",
+        "6. 生成 change-request.md（需求 + 技术能力需求）",
+        "7. 规划前后端分离方案（基于技术能力，不是技术选型）",
+        "8. 技术可行性分析"
       ],
       "output": {
-        "change_request": "整合需求文档（产品需求 + 技术视角）",
-        "frontend_implementation": "前端实现文档",
-        "backend_implementation": "后端实现文档",
+        "change_request": "整合需求文档（产品需求 + 技术能力需求）",
+        "tech_capabilities": "技术能力需求清单（只描述需要什么能力，不包含具体技术名称）",
+        "architecture_approach": "前后端分离方案（基于技术能力需求，用『需要』句式）",
         "tech_feasibility": "技术可行性分析"
       },
       "output_files": {
         "techImplementation": {
           "path": "tech-coach/tech-implementation.md",
-          "description": "技术实现文档（前后端分离）",
+          "description": "前后端分离方案文档（技术能力需求，用『需要』句式，不包含具体技术选型）",
           "type": "markdown",
           "required": true
         },

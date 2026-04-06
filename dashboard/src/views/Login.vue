@@ -32,8 +32,8 @@
         <div class="w-16 h-16 bg-gradient-to-br from-vue-primary to-vue-secondary rounded-2xl flex items-center justify-center mx-auto mb-4 glow-green">
           <span class="text-white font-bold text-2xl">MD</span>
         </div>
-        <h1 class="text-2xl font-bold gradient-text">Moby Dick</h1>
-        <p class="text-gray-400 text-sm mt-2">致敬白胡子的 AI 开发舰队</p>
+        <h1 class="text-2xl font-bold gradient-text">AI Coding PasS</h1>
+        <p class="text-gray-400 text-sm mt-2">AI 开发者的超能力套装</p>
       </div>
 
       <!-- Login Form -->

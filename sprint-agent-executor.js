@@ -103,7 +103,7 @@ const QA_INSTRUCTION = `## QA 测试指南
 你有能力使用浏览器工具来测试 Web 应用。当用户要求测试一个 URL 时：
 
 ### 测试流程
-1. 使用 Bash 工具打开浏览器：\`open "<url>"\` 或使用浏览工具
+1. 使用 Bash 工具打开浏览器：open "<url>" 或使用浏览工具
 2. 检查页面是否正确加载
 3. 测试核心功能（登录、表单提交、按钮点击等）
 4. 检查响应式布局（移动端适配）
@@ -129,7 +129,7 @@ const ROLE_STEP_SKILLS = {
     'brainstorming',          // 步骤 1/5: 用户画像与核心需求 (10KB)
     'user-story',             // 步骤 2/5: 用户故事拆解 (10KB)
     'product-spec-kit',       // 步骤 3/5: 功能清单与验收标准 (3.8KB)
-    'tailwind-design-system', // 步骤 4/5: 界面布局与交互流程 (15KB)
+    'ui-ux-designer',         // 步骤 4/5: 界面布局与交互流程 (4.3KB) - 替换 tailwind-design-system
     null                      // 步骤 5/5: 汇总生成PRD（不需要 skill）
   ],
   architect: [
@@ -178,6 +178,13 @@ const AGENT_MODELS = {
   evolver: 'opencode/gpt-5-nano',
   ghost: 'opencode/big-pickle',
   creative: 'opencode/big-pickle'
+};
+
+// 模型降级配置 - 速率限制时自动切换
+const MODEL_FALLBACKS = {
+  'opencode/qwen3.6-plus-free': 'opencode/big-pickle',
+  'opencode/gpt-5-nano': 'opencode/big-pickle',
+  'opencode/big-pickle': null  // 最终降级点，不再切换
 };
 
 // 超时配置 (毫秒)
@@ -280,7 +287,7 @@ ${rawInput}
 
 ### 读取文件
 请读取以下文件：
-${productFiles.map(f => `- \`${wsPath}/${f}\``).join('\n')}
+${productFiles.map(f => `- ${wsPath}/${f}`).join('\n')}
 
 ### ⚠️ 重要
 - 本步骤只需要读取文件，不需要生成任何输出
@@ -301,22 +308,22 @@ ${rawInput}
 
 ### 读取文件
 请先读取：
-- \`${wsPath}/product/prd.md\` - PRD 文档
-- \`${wsPath}/product/user-stories.md\` - 用户故事
-- \`${wsPath}/product/functional-requirements.md\` - 功能需求
-- \`${wsPath}/product/ui-layout.md\` - 界面布局
-- \`${wsPath}/product/user-journey.md\` - 用户旅程
+- ${wsPath}/product/prd.md - PRD 文档
+- ${wsPath}/product/user-stories.md - 用户故事
+- ${wsPath}/product/functional-requirements.md - 功能需求
+- ${wsPath}/product/ui-layout.md - 界面布局
+- ${wsPath}/product/user-journey.md - 用户旅程
 
 ### 生成技术实现文档
 输出以下文件：
 
-1. \`${wsPath}/tech-coach/tech-implementation.md\` - 技术实现文档（前后端分离）
+1. ${wsPath}/tech-coach/tech-implementation.md - 技术实现文档（前后端分离）
    - 前端：组件结构、页面路由、状态管理、API调用封装
    - 后端：API清单、数据库实现、业务逻辑、认证权限
 
-2. \`${wsPath}/output/user-stories.md\` - 开发用用户故事
+2. ${wsPath}/output/user-stories.md - 开发用用户故事
 
-3. \`${wsPath}/output/tech-feasibility.md\` - 技术可行性分析
+3. ${wsPath}/output/tech-feasibility.md - 技术可行性分析
    - 风险点识别
    - 实现难点评估
 `;
@@ -683,7 +690,7 @@ function generateProductPrompt(context) {
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 分析目标用户群体，识别核心需求和痛点。
@@ -696,7 +703,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 - 用户场景
 
 ## 输出文件
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/product/user-personas.md\`
+保存到: ${workspacePath}/product/user-personas.md
 `,
     `# 角色：产品经理 - 步骤 2/5: 用户故事拆解
 
@@ -704,7 +711,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 基于用户画像拆解用户故事。
@@ -716,7 +723,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 - 验收标准（Given-When-Then 格式）
 
 ## 输出文件
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/product/user-stories.md\`
+保存到: ${workspacePath}/product/user-stories.md
 `,
     `# 角色：产品经理 - 步骤 3/5: 功能清单与验收标准
 
@@ -724,7 +731,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 定义功能清单和验收标准。
@@ -736,7 +743,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 - 验收标准
 
 ## 输出文件
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/product/functional-requirements.md\`
+保存到: ${workspacePath}/product/functional-requirements.md
 `,
     `# 角色：产品经理 - 步骤 4/5: 界面布局与交互流程
 
@@ -744,7 +751,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 设计页面布局和用户交互流程。
@@ -757,8 +764,8 @@ ${workspacePath || `workspace/${pipelineId}`}
 - 用户交互流程
 
 ## 输出文件
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/product/ui-layout.md\`
-和: \`${workspacePath || `workspace/${pipelineId}`}/product/user-journey.md\`
+保存到: ${workspacePath}/product/ui-layout.md
+和: ${workspacePath}/product/user-journey.md
 `,
     `# 角色：产品经理 - 步骤 5/5: 汇总生成PRD
 
@@ -766,7 +773,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 整合所有产出，生成完整的PRD文档。
@@ -774,7 +781,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 ## 输出要求
 生成 JSON 格式的 PRD，必须包含以下结构：
 
-\`\`\`json
+json
 {
   "productOverview": {
     "name": "产品名称",
@@ -788,11 +795,11 @@ ${workspacePath || `workspace/${pipelineId}`}
   "nonFunctionalRequirements": [],
   "milestones": []
 }
-\`\`\`
+
 
 ## 输出文件
-保存为 JSON 到: \`${workspacePath || `workspace/${pipelineId}`}/product/prd.json\`
-同时生成 Markdown 版本到: \`${workspacePath || `workspace/${pipelineId}`}/product/prd.md\`
+保存为 JSON 到: ${workspacePath}/product/prd.json
+同时生成 Markdown 版本到: ${workspacePath}/product/prd.md
 `
   ];
 
@@ -853,37 +860,41 @@ function getStepGuidance(role, stepIndex) {
 async function generateArchitectPrompt(context) {
   const { pipelineId, rawInput, workspacePath, prd, stepIndex, projectPath, codePath } = context;
   
-  // 步骤 5 需要读取前 4 步的产出文件
+  // 步骤 5 (stepIndex=4) 或默认执行 (stepIndex=null) 需要读取前几步的产出文件
+  const isLastStep = stepIndex === null || stepIndex === 4;
   let step1Output = '', step2Output = '', step3Output = '', step4Output = '';
-  if (stepIndex === 4) {
+  if (isLastStep) {
     try {
-      step1Output = await fs.readFile(path.join(workspacePath, 'output/architect-step1.md'), 'utf-8');
+      step1Output = await fs.readFile(path.join(workspacePath, 'architect/architecture.md'), 'utf-8');
     } catch (e) { step1Output = '未找到（步骤 1 可能未执行或未保存）'; }
     try {
-      step2Output = await fs.readFile(path.join(workspacePath, 'output/architect-step2.md'), 'utf-8');
+      step2Output = await fs.readFile(path.join(workspacePath, 'architect/api-design.md'), 'utf-8');
     } catch (e) { step2Output = '未找到（步骤 2 可能未执行或未保存）'; }
     try {
-      step3Output = await fs.readFile(path.join(workspacePath, 'output/architect-step3.md'), 'utf-8');
+      step3Output = await fs.readFile(path.join(workspacePath, 'architect/database.md'), 'utf-8');
     } catch (e) { step3Output = '未找到（步骤 3 可能未执行或未保存）'; }
+    try {
+      step4Output = await fs.readFile(path.join(workspacePath, 'architect/data-flow.md'), 'utf-8');
+    } catch (e) { step4Output = '未找到（步骤 4 可能未执行或未保存）'; }
   }
   
-  const previousStepsContext = stepIndex === 4 ? `
+  const previousStepsContext = isLastStep ? `
 ## 前三步架构设计产出（必须读取并整合到 OpenSpec artifacts 中）
 
 ### 步骤 1：系统架构设计
-\`\`\`
+
 ${step1Output}
-\`\`\`
+
 
 ### 步骤 2：API 接口设计
-\`\`\`
+
 ${step2Output}
-\`\`\`
+
 
 ### 步骤 3：数据库模型设计
-\`\`\`
+
 ${step3Output}
-\`\`\`
+
 
 **重要**: 以上是你之前生成的架构设计产出，创建 OpenSpec artifacts 时必须基于这些实际内容：
 - design.md 必须整合步骤 1 的系统架构 + 步骤 2 的 API 设计 + 步骤 3 的数据库设计
@@ -891,55 +902,55 @@ ${step3Output}
 - 不要凭空编造，要忠实反映前三步的实际设计决策
 ` : '';
   
-  const openSpecInit = stepIndex === 4 ? `
+  const openSpecInit = isLastStep ? `
 ### 1. 初始化 OpenSpec 环境（如果项目还没有 OpenSpec）
-切换到项目目录: \`cd ${projectPath || `projects/${pipelineId}`}\`
-检查是否存在 \`openspec/spec.json\` 或 \`openspec/\` 目录：
-- 如果不存在: \`openspec init --tools opencode --no-color\`
+切换到项目目录: cd ${projectPath}
+检查是否存在 openspec/spec.json 或 openspec/ 目录：
+- 如果不存在: openspec init --tools opencode --no-color
 - 如果已存在: 跳过此步骤
 ` : '';
 
-  const openSpecCreate = stepIndex === 4 ? `
+  const openSpecCreate = isLastStep ? `
 ### 2. 创建 change proposal
-切换到项目目录: \`cd ${projectPath || `projects/${pipelineId}`}\`
+切换到项目目录: cd ${projectPath}
 基于 PRD 和前 3 步的架构设计，创建 change：
-\`\`\`bash
+bash
 openspec new change "<feature-name>" --description "<一句话描述>"
-\`\`\`
-feature-name 格式: \`sprint-N-short-desc\`（如 "sprint-1-user-auth", "sprint-2-payment"）
+
+feature-name 格式: sprint-N-short-desc（如 "sprint-1-user-auth", "sprint-2-payment"）
 description 简要描述本次迭代内容。
 ` : '';
 
-  const openSpecStatus = stepIndex === 4 ? `
+  const openSpecStatus = isLastStep ? `
 ### 3. 获取 artifact 构建顺序
-\`\`\`bash
+bash
 openspec status --change "<feature-name>" --json
-\`\`\`
+
 从 JSON 中获取 applyRequires（需要哪些 artifacts 才能开始实现）。
 ` : '';
 
-  const openSpecArtifacts = stepIndex === 4 ? `
+  const openSpecArtifacts = isLastStep ? `
 ### 4. 按依赖顺序创建 artifacts
 对每个 artifact：
-\`\`\`bash
+bash
 openspec instructions <artifact-id> --change "<feature-name>" --json
-\`\`\`
+
 从 instructions JSON 获取 template 和 rules，创建对应文件：
 - **proposal.md** — 变更描述、需求、影响范围（需求来源: PRD）
 - **design.md** — 技术设计决策（整合步骤 1 的系统架构 + 步骤 2 的 API 设计 + 步骤 3 的数据库设计）
 - **tasks.md** — 实现任务清单（基于 design.md，细化为可执行的开发任务，供开发者按顺序执行）
 ` : '';
 
-  const openSpecValidate = stepIndex === 4 ? `
+  const openSpecValidate = isLastStep ? `
 ### 5. 验证 change proposal
-\`\`\`bash
+bash
 openspec validate "<feature-name>"
 openspec status --change "<feature-name>"
-\`\`\`
+
 确保所有 applyRequires artifacts 状态为 done。
 ` : '';
 
-  const openSpecOutput = stepIndex === 4 ? `
+  const openSpecOutput = isLastStep ? `
 ## 输出要求
 - OpenSpec change 目录: projects/<pipelineId>/openspec/changes/<feature-name>/
 - 包含 proposal.md, design.md, tasks.md 等标准 artifacts
@@ -950,7 +961,7 @@ openspec status --change "<feature-name>"
 
 请在 projects/<pipelineId>/src/ 目录下创建以下结构：
 
-\`\`\`
+
 src/
 ├── backend/
 │   ├── src/
@@ -968,27 +979,27 @@ src/
     │   ├── api/
     │   └── store/
     └── package.json
-\`\`\`
+
 
 **必须执行以下 Bash 命令创建目录**:
-\`\`\`bash
+bash
 mkdir -p projects/<pipelineId>/src/backend/src/{routes,models,middleware,utils,data}
 mkdir -p projects/<pipelineId>/src/frontend/src/{pages,components,api,store}
-\`\`\`
+
 
 将 <pipelineId> 替换为实际的项目 ID（如 0409e4e9-87aa-4113-8416-0373a52dab10）。
 
 然后继续 OpenSpec 步骤。
 ` : '';
 
-  const openSpecFallback = stepIndex === 4 ? `
+  const openSpecFallback = isLastStep ? `
 - 如果 openspec CLI 不可用，降级为手动创建目录结构:
-  \`\`\`
+  
   projects/<pipelineId>/openspec/changes/<feature-name>/
   ├── proposal.md
   ├── design.md
   └── tasks.md
-  \`\`\`
+  
 ` : '';
   
   const stepPrompts = [
@@ -998,14 +1009,14 @@ mkdir -p projects/<pipelineId>/src/frontend/src/{pages,components,api,store}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 基于 tech-implementation.md 设计系统架构。
 
 ## 输入
 请先读取：
-- \`${workspacePath || `workspace/${pipelineId}`}/tech-coach/tech-implementation.md\` - 技术实现文档
+- ${workspacePath}/tech-coach/tech-implementation.md - 技术实现文档
 
 ## 输出要求
 1. 系统架构图（使用 Mermaid）
@@ -1013,7 +1024,7 @@ ${workspacePath || `workspace/${pipelineId}`}
 3. 组件列表和职责
 4. 数据流设计
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/architect/architecture.md\`
+保存到: ${workspacePath}/architect/architecture.md
 `,
     `# 角色：架构师 - 步骤 2/5：API 设计
 
@@ -1021,15 +1032,32 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 基于 tech-implementation.md + 系统设计，设计 RESTful API 接口规范。
 
 ## 输入
 请先读取：
-- \`${workspacePath || `workspace/${pipelineId}`}/tech-coach/tech-implementation.md\` - 技术实现文档
-- \`${workspacePath || `workspace/${pipelineId}`}/architect/architecture.md\` - 系统架构
+- ${workspacePath}/tech-coach/tech-implementation.md - 技术实现文档
+- ${workspacePath}/architect/architecture.md - 系统架构
+
+## 输出要求
+设计以下模块的 API 接口：
+1. 认证模块 (auth) - 登录、登出、刷新 Token
+2. 店员模块 (staff) - CRUD、密码重置
+3. 权限模块 (permission/role) - 角色 CRUD、权限分配
+4. 商品模块 (product) - CRUD、上下架
+5. 订单模块 (order) - CRUD、状态更新
+6. 店铺模块 (shop) - CRUD
+
+每个 API 需要包含：方法、路径、说明、请求参数、响应格式
+
+## ⚠️ 强制要求
+**必须使用 Write 工具将 API 设计写入文件**：
+${workspacePath}/architect/api-design.md
+
+文件内容必须包含完整的 API 接口定义，不要只输出到控制台。
 `,
     `# 角色：架构师 - 步骤 3/5：表设计
 
@@ -1037,22 +1065,33 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 基于 tech-implementation.md + 系统设计，设计数据库表结构。
 
 ## 输入
 请先读取：
-- \`${workspacePath || `workspace/${pipelineId}`}/tech-coach/tech-implementation.md\`
-- \`${workspacePath || `workspace/${pipelineId}`}/architect/architecture.md\`
+- ${workspacePath}/tech-coach/tech-implementation.md
+- ${workspacePath}/architect/architecture.md
 
 ## 输出要求
-1. 实体定义
-2. 字段类型和约束
-3. 表关系（1:1, 1:N, N:M）
+设计以下数据表：
+1. Shop (店铺表) - 店铺信息
+2. User (用户表) - 店员信息，关联店铺和角色
+3. Role (角色表) - 角色定义
+4. Permission (权限表) - 权限定义
+5. Product (商品表) - 商品信息，关联店铺
+6. Order (订单表) - 订单主表
+7. OrderItem (订单项表) - 订单明细
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/architect/database.md\`
+每个表需要包含：表名、字段定义、主键、外键、索引
+
+## ⚠️ 强制要求
+**必须使用 Write 工具将数据库设计写入文件**：
+${workspacePath}/architect/database.md
+
+文件内容必须包含完整的 ER 图和表结构定义，不要只输出到控制台。
 `,
     `# 角色：架构师 - 步骤 4/5：业务数据流转图
 
@@ -1060,23 +1099,23 @@ ${workspacePath || `workspace/${pipelineId}`}
 ${rawInput}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 基于步骤 1-3 的产出，绘制 Mermaid 业务数据流转图。
 
 ## 输入
 请先读取：
-- \`${workspacePath || `workspace/${pipelineId}`}/architect/architecture.md\`
-- \`${workspacePath || `workspace/${pipelineId}`}/architect/api-design.md\`
-- \`${workspacePath || `workspace/${pipelineId}`}/architect/database.md\`
+- ${workspacePath}/architect/architecture.md
+- ${workspacePath}/architect/api-design.md
+- ${workspacePath}/architect/database.md
 
 ## 输出要求
 Mermaid 流程图展示：
 - 业务数据流向
 - 模块交互关系
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/architect/data-flow.md\`
+保存到: ${workspacePath}/architect/data-flow.md
 `,
     `# 角色：架构师 - 步骤 5/5：OpenSpec Change Proposal
 
@@ -1088,7 +1127,7 @@ ${prd || '无'}
 ${previousStepsContext}
 
 ## 工作目录
-${workspacePath || `workspace/${pipelineId}`}
+${workspacePath}
 
 ## 你的任务
 使用 OpenSpec CLI 工具创建规范的 change proposal。
@@ -1118,8 +1157,8 @@ ${openSpecOutput}
     return prompt;
   }
   
-  // 默认返回完整 prompt（第4步）
-  let defaultPrompt = stepPrompts[3];
+  // 默认返回最后一步（第5步 - OpenSpec）- 因为这是最重要的产出
+  let defaultPrompt = stepPrompts[stepPrompts.length - 1];
   if (codePath) {
     defaultPrompt = defaultPrompt.replace(/CODE_DIR_PLACEHOLDER/g, codePath + '/');
   }
@@ -1397,7 +1436,7 @@ ${codeDir}
 2. 测试覆盖范围
 3. 测试数据准备
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/tester/test-cases.md\`
+保存到: ${workspacePath}/tester/test-cases.md
 `,
     `# 角色：测试工程师 - 步骤 2/4：${hasEnvironment ? '执行功能测试' : '静态代码审查'}
 
@@ -1438,7 +1477,7 @@ ${hasEnvironment
   : '1. 代码审查发现的问题列表\n2. 问题严重程度（高/中/低）\n3. 具体代码位置和修复建议'
 }
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/tester/test-results.md\`
+保存到: ${workspacePath}/tester/test-results.md
 `,
     `# 角色：测试工程师 - 步骤 3/4：安全漏洞扫描
 
@@ -1476,7 +1515,7 @@ ${hasEnvironment ? '✅ 测试环境已提供: ' + testEnvironmentUrl : '⚠️ 
 2. 发现的安全问题
 3. 风险等级评估
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/tester/security-scan.md\`
+保存到: ${workspacePath}/tester/security-scan.md
 `,
     `# 角色：测试工程师 - 步骤 4/4：生成测试报告
 
@@ -1511,8 +1550,8 @@ ${hasEnvironment
 5. 环境测试状态（运行时测试/静态审查）
 6. gstack 健康评分和 ship-readiness 总结（如有）
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/output/test-report.md\`
-和: \`${workspacePath || `workspace/${pipelineId}`}/output/security-report.md\`
+保存到: ${workspacePath}/output/test-report.md
+和: ${workspacePath}/output/security-report.md
 `
   ];
 
@@ -1553,7 +1592,7 @@ ${codeDir}
 - 环境依赖列表
 - 建议的部署架构
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/ops/env-analysis.md\`
+保存到: ${workspacePath}/ops/env-analysis.md
 `,
     `# 角色：运维工程师 - 步骤 2/4：Dockerfile 设计
 
@@ -1575,7 +1614,7 @@ ${codeDir}
 - Dockerfile (后端，基于 node:18)
 - docker-compose.yml (开发环境)
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/ops/\`
+保存到: ${workspacePath}/ops/
 `,
     `# 角色：运维工程师 - 步骤 3/4：CI/CD 配置
 
@@ -1597,7 +1636,7 @@ ${codeDir}
 - .github/workflows/deploy.yml (部署流水线)
 - .github/workflows/docker.yml (Docker 构建)
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/ops/.github/workflows/\`
+保存到: ${workspacePath}/ops/.github/workflows/
 `,
     `# 角色：运维工程师 - 步骤 4/4：部署脚本
 
@@ -1620,7 +1659,7 @@ ${codeDir}
 - DEPLOY.md (部署说明文档)
 - ops-config.md (运维配置汇总)
 
-保存到: \`${workspacePath || `workspace/${pipelineId}`}/ops/\`
+保存到: ${workspacePath}/ops/
 `
   ];
 
@@ -1703,23 +1742,47 @@ async function executeAgent(pipelineId, agentName, context = {}) {
     
     console.log(`   📋 Prompt 长度: ${prompt.length} 字符`);
     
-    // 执行 OpenCode（带重试机制）
+    // 执行 OpenCode（带重试机制和模型降级）
     let rawOutput;
     let retryCount = 0;
+    let currentModel = AGENT_MODELS[agentName] || 'opencode/big-pickle';
     
     while (retryCount <= MAX_RETRIES) {
       try {
         rawOutput = await runOpenCode(prompt, {
-          model: AGENT_MODELS[agentName] || 'opencode/big-pickle',
+          model: currentModel,
           agentName,
           skillName: skill
         });
+        
+        // 检查是否包含速率限制错误
+        if (rawOutput && (rawOutput.includes('rate increased too quickly') || 
+            rawOutput.includes('rate limit') || 
+            rawOutput.includes('Request rate increased'))) {
+          const fallbackModel = MODEL_FALLBACKS[currentModel];
+          if (fallbackModel) {
+            console.log(`   ⚠️ 检测到速率限制，切换模型: ${currentModel} → ${fallbackModel}`);
+            currentModel = fallbackModel;
+            continue; // 使用新模型重试
+          } else {
+            console.log(`   ⚠️ 速率限制，无法降级，继续使用当前输出`);
+          }
+        }
         break; // 成功，跳出重试循环
       } catch (error) {
         retryCount++;
         if (error.message === 'TIMEOUT_RETRY' && retryCount <= MAX_RETRIES) {
           console.log(`   🔄 超时重试 ${retryCount}/${MAX_RETRIES}...`);
           await new Promise(r => setTimeout(r, 1000)); // 等待1秒后重试
+        } else if (retryCount <= MAX_RETRIES) {
+          // 尝试模型降级
+          const fallbackModel = MODEL_FALLBACKS[currentModel];
+          if (fallbackModel) {
+            console.log(`   ⚠️ 执行失败，切换模型: ${currentModel} → ${fallbackModel}`);
+            currentModel = fallbackModel;
+          } else {
+            throw error; // 无法降级或超出重试次数
+          }
         } else {
           throw error; // 其他错误或超出重试次数
         }
@@ -1898,7 +1961,8 @@ async function runIteration(sprintId, roleIndex, customModel = null, startStep =
   }
   
   // 获取当前步骤索引 - 处理 NaN 情况
-  let stepIdx = null;
+  // 如果没有指定 startStep，默认从第 0 步开始执行所有步骤
+  let stepIdx = 0;
   if (startStep !== undefined && startStep !== null) {
     const parsed = parseInt(startStep);
     stepIdx = isNaN(parsed) ? 0 : parsed;
@@ -2022,13 +2086,48 @@ async function runIteration(sprintId, roleIndex, customModel = null, startStep =
     
     // Tester 角色：根据是否有测试环境决定执行方式
     const hasTestEnv = role === 'tester' && context.testEnvironmentUrl;
-    const rawOutput = await runOpenCode(prompt, {
-      model: model,
-      agentName: role,
-      skillName: currentSkill,
-      usePure: role !== 'tester' || !hasTestEnv,  // 无环境时使用 --pure，有环境时保留 gstack 插件
-      qaInstruction: (role === 'tester' && hasTestEnv) ? QA_INSTRUCTION : null  // 有环境时注入轻量 QA 指令
-    });
+    
+    // 执行 OpenCode（带速率限制检测和模型降级）
+    let rawOutput;
+    let currentModel = model;
+    let rateLimitRetryCount = 0;
+    const maxRateLimitRetries = 2;
+    
+    while (rateLimitRetryCount <= maxRateLimitRetries) {
+      try {
+        rawOutput = await runOpenCode(prompt, {
+          model: currentModel,
+          agentName: role,
+          skillName: currentSkill,
+          usePure: role !== 'tester' || !hasTestEnv,  // 无环境时使用 --pure，有环境时保留 gstack 插件
+          qaInstruction: (role === 'tester' && hasTestEnv) ? QA_INSTRUCTION : null  // 有环境时注入轻量 QA 指令
+        });
+        
+        // 检查是否包含速率限制错误
+        if (rawOutput && (rawOutput.includes('rate increased too quickly') || 
+            rawOutput.includes('rate limit') || 
+            rawOutput.includes('Request rate increased'))) {
+          const fallbackModel = MODEL_FALLBACKS[currentModel];
+          if (fallbackModel && rateLimitRetryCount < maxRateLimitRetries) {
+            console.log(`   ⚠️ 检测到速率限制，切换模型: ${currentModel} → ${fallbackModel}`);
+            currentModel = fallbackModel;
+            rateLimitRetryCount++;
+            continue;
+          }
+        }
+        break; // 成功或无法降级
+      } catch (error) {
+        // 尝试模型降级
+        const fallbackModel = MODEL_FALLBACKS[currentModel];
+        if (fallbackModel && rateLimitRetryCount < maxRateLimitRetries) {
+          console.log(`   ⚠️ 执行失败，切换模型: ${currentModel} → ${fallbackModel}`);
+          currentModel = fallbackModel;
+          rateLimitRetryCount++;
+          continue;
+        }
+        throw error;
+      }
+    }
     
     console.log(`   ✅ 执行完成，输出长度: ${rawOutput.length} 字符`);
     
@@ -2069,7 +2168,10 @@ async function runIteration(sprintId, roleIndex, customModel = null, startStep =
     const totalSteps = ROLE_STEPS[role] || 1;
     const currentStep = stepIdx !== null ? stepIdx + 1 : totalSteps;
     
-    if (stepIdx !== null && currentStep < totalSteps) {
+    // 当 stepIdx 为 null 时，从第 0 步开始执行所有步骤
+    const startIdx = stepIdx !== null ? stepIdx : 0;
+    
+    if (currentStep < totalSteps) {
       // 继续执行下一步骤
       console.log(`\n   🔄 步骤 ${currentStep + 1}/${totalSteps} 准备中...`);
       
