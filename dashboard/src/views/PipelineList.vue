@@ -75,8 +75,12 @@
         <div 
           v-for="pipeline in store.pipelines" 
           :key="pipeline.id"
-          class="px-6 py-4 hover:bg-gray-750 cursor-pointer transition-colors"
+          class="px-6 py-4 hover:bg-gray-750 active:bg-gray-800 cursor-pointer transition-colors duration-150"
+          role="button"
+          tabindex="0"
           @click="$emit('select', pipeline.id)"
+          @keydown.enter="$emit('select', pipeline.id)"
+          @keydown.space.prevent="$emit('select', pipeline.id)"
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-4">
@@ -109,16 +113,18 @@
               
               <button 
                 v-if="pipeline.status === 'pending'"
+                type="button"
                 @click.stop="startPipeline(pipeline.id)"
-                class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
+                class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white rounded-md text-sm transition-all duration-150 select-none min-h-[32px]"
               >
                 启动
               </button>
               
               <button 
                 v-if="pipeline.status === 'running'"
+                type="button"
                 @click.stop="stopPipeline(pipeline.id)"
-                class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-sm transition-colors"
+                class="px-3 py-1.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-md text-sm transition-all duration-150 select-none min-h-[32px]"
               >
                 停止
               </button>

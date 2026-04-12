@@ -177,10 +177,62 @@ export const useProjectStore = defineStore('project', {
         this.sprints.push(data)
         return data
       } catch (e) {
-        this.error = e.message
+        this.error = e.response?.data?.error || e.message
         return null
       } finally {
         this.loading = false
+      }
+    },
+
+    async fetchReports(projectId = null) {
+      this.error = null
+      try {
+        const endpoint = projectId
+          ? `${API_URL}/api/projects/${projectId}/reports`
+          : `${API_URL}/api/reports`
+        const { data } = await axios.get(endpoint)
+        return Array.isArray(data) ? data : []
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return []
+      }
+    },
+
+    async updateProjectCodePath(projectId, codePath) {
+      this.error = null
+      try {
+        const { data } = await axios.put(`${API_URL}/api/projects/${projectId}/code-path`, { codePath })
+        const idx = this.projects.findIndex(p => p.id === projectId)
+        if (idx !== -1) this.projects[idx] = data
+        if (this.currentProject?.id === projectId) this.currentProject = data
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
+      }
+    },
+
+    async fetchProjectCodeFiles(projectId) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/projects/${projectId}/code/files`)
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
+      }
+    },
+
+    async fetchProjectCodeContent(projectId, filePath) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/projects/${projectId}/code/content`, {
+          params: { file: filePath }
+        })
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
       }
     },
 
@@ -268,6 +320,25 @@ export const useProjectStore = defineStore('project', {
       }
     },
 
+    /** 将某流程阶段（如 tech-design）内全部角色标为 confirmed，解锁下一阶段 */
+    async markStageConfirmed(sprintId, stageId) {
+      this.error = null
+      try {
+        const { data } = await axios.post(
+          `${API_URL}/api/sprints/${sprintId}/mark-stage-confirmed`,
+          { stageId }
+        )
+        if (this.currentSprint?.id === sprintId) {
+          this.currentSprint = await this.fetchSprint(sprintId)
+        }
+        return data
+      } catch (e) {
+        const msg = e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
+      }
+    },
+
     async updateEnvironment(sprintId, roleIndex, testEnvironmentUrl) {
       this.error = null
       try {
@@ -301,16 +372,54 @@ export const useProjectStore = defineStore('project', {
       }
     },
 
-    async executeIteration(sprintId, roleIndex, stepIndex = null) {
+    async executeIteration(sprintId, roleIndex, stepIndex = null, extra = {}) {
       this.error = null
       try {
+        const body = { ...extra }
+        if (stepIndex !== null && stepIndex !== undefined) {
+          body.stepIndex = stepIndex
+        }
         const { data } = await axios.post(
           `${API_URL}/api/sprints/${sprintId}/iterations/${roleIndex}/execute`,
-          { stepIndex }
+          body
         )
         return data
       } catch (e) {
-        this.error = e.message
+        const msg = e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
+      }
+    },
+
+    async fetchDeveloperState(sprintId) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/sprints/${sprintId}/developer/state`)
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
+      }
+    },
+
+    async fetchDeveloperTaskRuns(sprintId) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/sprints/${sprintId}/developer/task-runs`)
+        return Array.isArray(data?.items) ? data.items : []
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return []
+      }
+    },
+
+    async fetchDeveloperTaskRunDetail(sprintId, taskIndex) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/sprints/${sprintId}/developer/task-runs/${taskIndex}`)
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
         return null
       }
     },
@@ -320,7 +429,7 @@ export const useProjectStore = defineStore('project', {
       try {
         const { data } = await axios.put(
           `${API_URL}/api/sprints/${sprintId}/iterations/${roleIndex}/output`,
-          { output }
+          { output, status: 'completed' }
         )
         if (this.currentSprint?.id === sprintId) {
           this.currentSprint = await this.fetchSprint(sprintId)
@@ -367,6 +476,17 @@ export const useProjectStore = defineStore('project', {
         return true
       } catch (e) {
         return false
+      }
+    },
+
+    async fetchAvailableModels() {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/config/models/available`)
+        return Array.isArray(data?.models) ? data.models : []
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return []
       }
     }
   }

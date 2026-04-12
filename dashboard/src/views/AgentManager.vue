@@ -1,10 +1,10 @@
 <template>
-  <div class="space-y-6">
+  <div class="agent-manager-page space-y-6">
     <!-- 角色切换器 -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700">
-      <div class="px-6 py-4 border-b border-gray-700">
-        <h2 class="text-lg font-medium text-white">角色切换</h2>
-        <p class="text-gray-400 text-sm mt-1">选择要扮演的角色，查看该角色的任务和状态</p>
+    <div class="df-panel">
+      <div class="px-6 py-4 border-b" style="border-color: #e4e7ed;">
+        <h2 class="text-lg font-semibold" style="color: #303133;">角色切换</h2>
+        <p class="text-sm mt-1" style="color: #909399;">选择要扮演的角色，查看该角色的任务和状态</p>
       </div>
           <div class="p-6">
         <div class="grid grid-cols-2 md:grid-cols-6 lg:grid-cols-7 gap-3">
@@ -12,14 +12,14 @@
             v-for="agent in agents"
             :key="agent.id"
             @click="selectAgent(agent)"
-            class="p-3 rounded-lg border-2 transition-all text-center relative"
+            class="df-agent-button p-3 rounded-lg border-2 transition-all duration-150 text-center relative"
             :class="selectedAgent?.id === agent.id 
               ? 'border-primary-500 bg-primary-500/10' 
-              : 'border-gray-700 hover:border-gray-600 bg-gray-900'"
+              : 'border-gray-200 hover:border-gray-300 bg-white'"
           >
             <div class="text-2xl mb-1">{{ agent.icon }}</div>
             <div class="text-white font-medium text-sm">{{ agent.name }}</div>
-            <div v-if="agent.skills?.length > 0" class="text-primary-400 text-xs mt-1">
+            <div v-if="agent.skills?.length > 0" class="text-xs mt-1" style="color: #409eff;">
               ⚡ {{ agent.skills.length }} skills
             </div>
             <div v-else class="text-gray-500 text-xs mt-1">
@@ -33,15 +33,16 @@
     <!-- 选中角色详情 -->
     <div v-if="selectedAgent" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- 角色信息 -->
-      <div class="bg-gray-800 rounded-lg border border-gray-700">
-        <div class="px-6 py-4 border-b border-gray-700">
+      <div class="df-panel">
+        <div class="px-6 py-4 border-b" style="border-color: #e4e7ed;">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-medium text-white">
+            <h2 class="text-lg font-semibold" style="color: #303133;">
               {{ selectedAgent.icon }} {{ selectedAgent.name }}
             </h2>
             <button
               @click="selectedAgent = null"
-              class="text-gray-400 hover:text-white"
+              class="p-1 rounded-lg transition-all duration-150 hover:bg-gray-100 active:bg-gray-200"
+              style="color: #909399;"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -58,10 +59,11 @@
           <div>
             <h3 class="text-gray-400 text-sm mb-2">触发条件</h3>
             <div class="flex flex-wrap gap-2">
-              <span 
+              <span
                 v-for="trigger in selectedAgent.triggers" 
                 :key="trigger"
-                class="px-2 py-1 bg-gray-700 rounded text-sm text-gray-300"
+                class="px-2 py-1 rounded text-sm"
+                style="background: #f4f4f5; color: #606266;"
               >
                 {{ trigger }}
               </span>
@@ -71,10 +73,11 @@
           <div>
             <h3 class="text-gray-400 text-sm mb-2">工具</h3>
             <div class="flex flex-wrap gap-2">
-              <span 
+              <span
                 v-for="tool in selectedAgent.tools" 
                 :key="tool"
-                class="px-2 py-1 bg-primary-500/20 rounded text-sm text-primary-400"
+                class="px-2 py-1 rounded text-sm"
+                style="background: #ecf5ff; color: #409eff;"
               >
                 {{ tool }}
               </span>
@@ -87,7 +90,8 @@
               <div 
                 v-for="skill in selectedAgent.skills" 
                 :key="skill.name"
-                class="bg-gradient-to-r from-primary-500/10 to-secondary-500/10 rounded-lg p-3 border border-primary-500/20 hover:border-primary-500/40 transition-colors"
+                class="rounded-lg p-3 border transition-colors"
+                style="background: #f8fbff; border-color: #d9ecff;"
               >
                 <div class="flex items-center space-x-3">
                   <span class="text-lg">⚡</span>
@@ -101,7 +105,7 @@
           </div>
           <div v-else-if="selectedAgent.id === 'gatekeeper'" class="border-t border-gray-700 pt-4">
             <h3 class="text-gray-400 text-sm mb-2">角色说明</h3>
-            <div class="bg-gradient-to-r from-gray-500/10 to-gray-600/10 rounded-lg p-3 border border-gray-500/20">
+            <div class="rounded-lg p-3 border" style="background: #f5f7fa; border-color: #e4e7ed;">
               <div class="text-gray-300 text-sm">
                 守门人是系统的核心调度角色，负责：
               </div>
@@ -121,14 +125,16 @@
               <div 
                 v-for="scenario in selectedAgent.scenarios" 
                 :key="scenario.id"
-                class="bg-gradient-to-r from-primary-500/10 to-secondary-500/10 rounded-lg p-3 border border-primary-500/20"
+                class="rounded-lg p-3 border"
+                style="background: #f8fbff; border-color: #d9ecff;"
               >
                 <div class="text-white font-medium mb-2">{{ scenario.name }}</div>
                 <div class="flex flex-wrap gap-1.5">
-                  <span 
+                  <span
                     v-for="skill in scenario.skills" 
                     :key="skill.name"
-                    class="px-2 py-0.5 bg-primary-500/20 rounded text-xs text-primary-300"
+                    class="px-2 py-0.5 rounded text-xs"
+                    style="background: #ecf5ff; color: #409eff;"
                   >
                     {{ skill.name }}
                   </span>
@@ -147,14 +153,15 @@
               <div 
                 v-for="scenario in selectedAgent.scenarios" 
                 :key="scenario.id"
-                class="bg-gradient-to-r from-blue-500/10 to-cyan-500/10 rounded-lg p-3 border border-blue-500/20"
+                class="rounded-lg p-3 border"
+                style="background: #f8fbff; border-color: #d9ecff;"
               >
                 <div class="text-white font-medium mb-2">{{ scenario.name }}</div>
                 <div class="flex flex-wrap gap-1.5">
                   <span 
                     v-for="skill in scenario.skills" 
                     :key="skill.name"
-                    :class="skill.name.includes('必用') ? 'bg-orange-500/30 text-orange-300' : 'bg-blue-500/20 text-blue-300'"
+                    :class="skill.name.includes('必用') ? 'tag-high-risk' : 'tag-info'"
                     class="px-2 py-0.5 rounded text-xs"
                   >
                     {{ skill.name }}
@@ -174,14 +181,15 @@
               <div 
                 v-for="scenario in selectedAgent.scenarios" 
                 :key="scenario.id"
-                class="bg-gradient-to-r from-green-500/10 to-teal-500/10 rounded-lg p-3 border border-green-500/20"
+                class="rounded-lg p-3 border"
+                style="background: #f0f9eb; border-color: #e1f3d8;"
               >
                 <div class="text-white font-medium mb-2">{{ scenario.name }}</div>
                 <div class="flex flex-wrap gap-1.5">
                   <span 
                     v-for="skill in scenario.skills" 
                     :key="skill.name"
-                    :class="skill.name.includes('已安装') ? 'bg-green-500/30 text-green-300' : 'bg-green-500/20 text-green-300'"
+                    :class="skill.name.includes('已安装') ? 'tag-success-strong' : 'tag-success'"
                     class="px-2 py-0.5 rounded text-xs"
                   >
                     {{ skill.name }}
@@ -194,21 +202,27 @@
             </div>
           </div>
 
-          <div v-if="selectedAgent.id !== 'gatekeeper' && selectedAgent.id !== 'architect' && selectedAgent.id !== 'developer' && selectedAgent.id !== 'ops'" class="border-t border-gray-700 pt-4">
+          <div v-if="selectedAgent.id !== 'gatekeeper'" class="border-t border-gray-700 pt-4">
             <h3 class="text-gray-400 text-sm mb-2">AI 模型</h3>
             <div class="flex items-center space-x-3">
               <select
                 v-model="agentModels[selectedAgent.id]"
                 @change="saveModelConfig"
-                class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-primary-500"
+                class="flex-1 border rounded-lg px-3 py-2 focus:outline-none"
+                style="border-color: #dcdfe6; color: #303133; background: #fff;"
               >
-                <option value="opencode/big-pickle">🤖 big-pickle (最强模型)</option>
-                <option value="opencode/sonnet">🤖 sonnet (均衡)</option>
-                <option value="opencode/gpt-5-nano">🤖 gpt-5-nano (快速)</option>
+                <option
+                  v-for="model in availableModelOptions"
+                  :key="model"
+                  :value="model"
+                >
+                  🤖 {{ model }}
+                </option>
               </select>
               <button
                 @click="resetModelConfig(selectedAgent.id)"
-                class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-400 text-sm transition-colors"
+                class="px-3 py-2 rounded-lg text-sm transition-all duration-150 border hover:bg-gray-50 active:bg-[#ebeef5] active:scale-[0.98]"
+                style="border-color: #dcdfe6; color: #606266;"
                 title="重置为默认模型"
               >
                 ↩
@@ -220,9 +234,9 @@
       </div>
 
       <!-- 角色任务 -->
-      <div class="bg-gray-800 rounded-lg border border-gray-700">
-        <div class="px-6 py-4 border-b border-gray-700">
-          <h2 class="text-lg font-medium text-white">当前任务</h2>
+      <div class="df-panel">
+        <div class="px-6 py-4 border-b" style="border-color: #e4e7ed;">
+          <h2 class="text-lg font-semibold" style="color: #303133;">当前任务</h2>
         </div>
         <div class="p-6">
           <div v-if="agentTasks.length === 0" class="text-center py-8">
@@ -231,10 +245,10 @@
           </div>
           
           <div v-else class="space-y-3">
-            <div 
+            <div
               v-for="task in agentTasks" 
               :key="task.pipelineId"
-              class="bg-gray-900 rounded-lg p-4 border border-gray-700"
+              class="df-subpanel rounded-lg p-4"
             >
               <div class="flex items-center justify-between mb-2">
                 <span class="text-white font-medium">{{ task.pipelineId.slice(0, 8) }}</span>
@@ -248,15 +262,17 @@
                   {{ task.timestamp }}
                 </span>
                 <div class="flex gap-2">
-                  <button 
+                  <button
                     @click="executeTask(task)"
-                    class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+                    class="px-3 py-1 rounded text-sm transition-all duration-150 select-none min-h-[32px] shadow-sm hover:brightness-105 active:brightness-95 active:scale-[0.98]"
+                    style="background: #409eff; color: #fff;"
                   >
                     执行
                   </button>
-                  <button 
+                  <button
                     @click="viewPipeline(task.pipelineId)"
-                    class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                    class="px-3 py-1 rounded text-sm transition-all duration-150 select-none min-h-[32px] border hover:bg-gray-50 active:bg-[#ebeef5] active:scale-[0.98]"
+                    style="border-color: #dcdfe6; color: #606266;"
                   >
                     查看
                   </button>
@@ -269,20 +285,20 @@
     </div>
 
     <!-- 角色流水线视图 -->
-    <div v-if="selectedAgent" class="bg-gray-800 rounded-lg border border-gray-700">
-      <div class="px-6 py-4 border-b border-gray-700">
-        <h2 class="text-lg font-medium text-white">角色流水线</h2>
-        <p class="text-gray-400 text-sm">该角色参与的所有流水线</p>
+    <div v-if="selectedAgent" class="df-panel">
+      <div class="px-6 py-4 border-b" style="border-color: #e4e7ed;">
+        <h2 class="text-lg font-semibold" style="color: #303133;">角色流水线</h2>
+        <p class="text-sm" style="color: #909399;">该角色参与的所有流水线</p>
       </div>
       <div class="p-6">
         <div v-if="agentPipelines.length === 0" class="text-center py-8">
           <p class="text-gray-400">暂无相关流水线</p>
         </div>
         <div v-else class="space-y-3">
-          <div 
+          <div
             v-for="pipeline in agentPipelines"
             :key="pipeline.id"
-            class="bg-gray-900 rounded-lg p-4 border border-gray-700 flex items-center justify-between"
+            class="df-subpanel rounded-lg p-4 flex items-center justify-between"
           >
             <div class="flex items-center space-x-4">
               <div :class="statusClass(pipeline.status)" class="w-3 h-3 rounded-full"></div>
@@ -296,9 +312,10 @@
                 <div class="text-gray-300">{{ pipeline.currentStage }}</div>
                 <div class="text-gray-500 text-xs">{{ formatTime(pipeline.updatedAt) }}</div>
               </div>
-              <button 
+              <button
                 @click="viewPipeline(pipeline.id)"
-                class="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
+                class="px-3 py-1 rounded text-sm transition-all duration-150 select-none min-h-[32px] border hover:bg-gray-50 active:bg-[#ebeef5] active:scale-[0.98]"
+                style="border-color: #dcdfe6; color: #606266;"
               >
                 查看
               </button>
@@ -588,6 +605,16 @@ function loadModelConfig() {
 
 // 模型配置
 const agentModels = ref(loadModelConfig())
+const availableModels = ref([])
+
+const availableModelOptions = computed(() => {
+  const merged = new Set([
+    ...Object.values(DEFAULT_MODELS),
+    ...availableModels.value,
+    ...Object.values(agentModels.value || {})
+  ])
+  return Array.from(merged).sort((a, b) => a.localeCompare(b))
+})
 
 // 获取角色使用的模型
 function getAgentModel(agentId) {
@@ -619,6 +646,8 @@ onMounted(async () => {
     agentModels.value = serverConfig
     localStorage.setItem('agent-models', JSON.stringify(serverConfig))
   }
+
+  availableModels.value = await projectStore.fetchAvailableModels()
 })
 
 const agentTasks = computed(() => {
@@ -710,3 +739,95 @@ onMounted(() => {
   store.fetchPipelines()
 })
 </script>
+
+<style scoped>
+.df-panel {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.df-subpanel {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  transition: all 0.15s ease;
+}
+
+.df-subpanel:hover {
+  border-color: #dcdfe6;
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.08);
+}
+
+.df-agent-button {
+  min-height: 90px;
+}
+
+.df-agent-button:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.tag-info {
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+.tag-high-risk {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.tag-success {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.tag-success-strong {
+  background: #e1f3d8;
+  color: #67c23a;
+}
+
+.agent-manager-page :deep(.text-white) {
+  color: #303133 !important;
+}
+
+.agent-manager-page :deep(.text-gray-500) {
+  color: #c0c4cc !important;
+}
+
+.agent-manager-page :deep(.text-gray-400) {
+  color: #909399 !important;
+}
+
+.agent-manager-page :deep(.text-gray-300) {
+  color: #606266 !important;
+}
+
+.agent-manager-page :deep(.text-primary-400),
+.agent-manager-page :deep(.text-primary-300) {
+  color: #409eff !important;
+}
+
+.agent-manager-page :deep(.bg-gray-900),
+.agent-manager-page :deep(.bg-gray-800),
+.agent-manager-page :deep(.bg-gray-700) {
+  background: #fff !important;
+}
+
+.agent-manager-page :deep(.border-gray-700),
+.agent-manager-page :deep(.border-gray-600) {
+  border-color: #e4e7ed !important;
+}
+
+.agent-manager-page :deep(.hover\:bg-gray-600:hover),
+.agent-manager-page :deep(.hover\:bg-gray-700:hover) {
+  background: #f5f7fa !important;
+}
+
+@media (max-width: 768px) {
+  .df-agent-button {
+    min-height: 84px;
+  }
+}
+</style>

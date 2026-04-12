@@ -9,9 +9,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import os from 'os';
+import { ROUTES } from '../../config/pipelineConfig.js';
+import { createHarness } from '../../harness/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = '/Users/jialin.chen/WorkSpace/DevForge';
+const ROOT = path.join(__dirname, '..', '..');
 
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
@@ -28,11 +30,16 @@ function getLocalIP() {
 // 配置路径 - 新结构 projects/{projectId}/sprints/{sprintId}/
 const PROJECTS_DIR = path.join(ROOT, 'projects');
 const AI_AGENT_EXECUTOR = path.join(ROOT, 'ai-agent-executor.js');
+const WORKSPACE_DIR = path.join(ROOT, 'workspace');
+const MAX_PREVIEW_BYTES = 1024 * 1024;
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.DS_Store']);
+const MODELS_CONFIG_PATH = path.join(ROOT, 'model-config.json');
+const OPENCODE_CONFIG_PATH =
+  process.env.OPENCODE_CONFIG_PATH || path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
 
-// BUILD 流程默认角色
-const DEFAULT_ROLES = ['product', 'tech_coach', 'architect', 'developer', 'tester', 'ops', 'evolver'];
+const DEFAULT_SCENARIO = 'BUILD';
 
-// 角色信息
+// 角色信息（须覆盖 ROUTES 中全部 role）
 const ROLE_INFO = {
   product: { icon: '📋', name: '产品经理', name_en: 'Product BA' },
   architect: { icon: '🏗️', name: '架构师', name_en: 'Architect' },
@@ -40,11 +47,200 @@ const ROLE_INFO = {
   developer: { icon: '💻', name: '开发者', name_en: 'Developer' },
   tester: { icon: '🧪', name: '测试工程师', name_en: 'QA Engineer' },
   ops: { icon: '⚙️', name: '运维工程师', name_en: 'DevOps' },
-  evolver: { icon: '🔄', name: '进化顾问', name_en: 'Evolver' }
+  evolver: { icon: '🔄', name: '进化顾问', name_en: 'Evolver' },
+  ghost: { icon: '👻', name: '安全审计', name_en: 'Ghost' },
+  creative: { icon: '🎨', name: '创意总监', name_en: 'Creative' }
 };
+
+function resolveRolesForScenario(scenario) {
+  const key = scenario && ROUTES[scenario] ? scenario : DEFAULT_SCENARIO;
+  return { scenario: key, roles: [...ROUTES[key]] };
+}
+
+/** 与 dashboard sprintStageConfig 阶段 id 对齐，用于将整段阶段标为已确认 */
+function getRolesForStageId(scenario, stageId) {
+  const maps = {
+    BUILD: {
+      requirement: ['product'],
+      'tech-design': ['tech_coach', 'architect'],
+      development: ['developer'],
+      testing: ['tester'],
+      deploy: ['ops'],
+      optimize: ['evolver']
+    },
+    CRITICAL: {
+      requirement: ['product'],
+      'tech-design': ['architect'],
+      creative: ['creative'],
+      development: ['developer'],
+      testing: ['tester'],
+      optimize: ['evolver']
+    },
+    REVIEW: {
+      design_review: ['creative'],
+      security_pass: ['ghost'],
+      testing: ['tester']
+    },
+    QUERY: {
+      feasibility: ['tech_coach']
+    },
+    SECURITY: {
+      security_pass: ['ghost'],
+      architecture_review: ['architect']
+    }
+  };
+  const m = maps[scenario] || maps.BUILD;
+  return m[stageId] || null;
+}
+
+function buildIterations(roles) {
+  return roles.map((role, index) => ({
+    role,
+    roleIndex: index,
+    roleInfo: ROLE_INFO[role] || { icon: '🤖', name: role, name_en: role },
+    status: 'pending',
+    userInput: '',
+    output: '',
+    history: [],
+    startedAt: null,
+    completedAt: null,
+    developerTaskCursor: role === 'developer' ? 1 : null,
+    developerRunningTaskIndex: null
+  }));
+}
+
+function getDeveloperStepIndexByTaskIndex(taskIndex) {
+  const idx = Number(taskIndex);
+  if (!Number.isFinite(idx) || idx < 1) return 1;
+  if (idx <= 10) return 1;
+  if (idx <= 20) return 2;
+  if (idx <= 30) return 3;
+  if (idx <= 40) return 4;
+  return 5;
+}
+
+function parseTasksFromMarkdown(md) {
+  const lines = String(md || '').split(/\r?\n/);
+  const tasks = [];
+  let h2 = '';
+  let h3 = '';
+  for (const raw of lines) {
+    const line = raw.trim();
+    const m2 = line.match(/^##\s+(.*)$/);
+    if (m2) {
+      h2 = m2[1].trim();
+      h3 = '';
+      continue;
+    }
+    const m3 = line.match(/^###\s+(.*)$/);
+    if (m3) {
+      h3 = m3[1].trim();
+      continue;
+    }
+    const mt = line.match(/^- \[\s*\]\s+(.*)$/);
+    if (mt) {
+      tasks.push({ text: mt[1].trim(), h2, h3 });
+    }
+  }
+  return tasks;
+}
+
+async function resolveLatestTasksPathForSprint(sprint) {
+  const projectId = sprint?.projectId;
+  if (!projectId) return null;
+  const changesDir = path.join(PROJECTS_DIR, projectId, 'openspec', 'changes');
+  if (!fsSync.existsSync(changesDir)) return null;
+  const entries = await fs.readdir(changesDir, { withFileTypes: true });
+  let latestPath = null;
+  let latestMtime = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const taskPath = path.join(changesDir, entry.name, 'tasks.md');
+    if (!fsSync.existsSync(taskPath)) continue;
+    try {
+      const stat = await fs.stat(taskPath);
+      const mt = stat.mtimeMs || 0;
+      if (mt >= latestMtime) {
+        latestMtime = mt;
+        latestPath = taskPath;
+      }
+    } catch (_e) {}
+  }
+  return latestPath;
+}
 
 // 跟踪运行中的 agent 进程
 const runningAgents = new Map();
+
+/** Harness：技能预热与进程池统计（sprint-agent-executor 仍为独立 spawn，统计可观测） */
+let harnessInstance = null;
+let harnessInitPromise = null;
+
+function parseBoolEnv(name, defaultValue) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') return defaultValue;
+  const v = String(raw).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(v)) return true;
+  if (['0', 'false', 'no', 'off'].includes(v)) return false;
+  return defaultValue;
+}
+
+const HARNESS_REQUIRED = parseBoolEnv('HARNESS_REQUIRED', false);
+const HARNESS_WARMUP_ON_START = parseBoolEnv('HARNESS_WARMUP_ON_START', false);
+
+/**
+ * 默认：直接 `opencode run`，不注入 `--attach`（不依赖 opencode serve / HTTP）。
+ * 需要 attach 复用时设置 DEVFORGE_DISABLE_OPENCODE_ATTACH=0 或 false。
+ */
+function opencodeAttachDisabled() {
+  return parseBoolEnv('DEVFORGE_DISABLE_OPENCODE_ATTACH', true);
+}
+
+async function ensureHarness() {
+  if (harnessInstance) return harnessInstance;
+  if (!harnessInitPromise) {
+    harnessInitPromise = createHarness({ rootDir: ROOT }).catch((err) => {
+      console.warn('[Harness] init failed:', err.message);
+      harnessInitPromise = null;
+      return null;
+    });
+  }
+  harnessInstance = await harnessInitPromise;
+  try {
+    const attachUrl = harnessInstance?.getStats?.()?.opencode?.attachUrl;
+    if (attachUrl && !opencodeAttachDisabled()) {
+      process.env.DEVFORGE_OPENCODE_ATTACH_URL = String(attachUrl);
+    }
+  } catch {}
+  return harnessInstance;
+}
+
+const MAX_CONCURRENT_SPRINT_EXECUTORS = Math.max(
+  1,
+  parseInt(process.env.MAX_CONCURRENT_SPRINT_EXECUTORS || '3', 10) || 3
+);
+let activeSprintExecutors = 0;
+const sprintExecutorWaitQueue = [];
+
+function acquireSprintExecutorSlot() {
+  return new Promise((resolve) => {
+    if (activeSprintExecutors < MAX_CONCURRENT_SPRINT_EXECUTORS) {
+      activeSprintExecutors++;
+      resolve();
+    } else {
+      sprintExecutorWaitQueue.push(resolve);
+    }
+  });
+}
+
+function releaseSprintExecutorSlot() {
+  activeSprintExecutors = Math.max(0, activeSprintExecutors - 1);
+  const next = sprintExecutorWaitQueue.shift();
+  if (next) {
+    activeSprintExecutors++;
+    next();
+  }
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -144,6 +340,7 @@ class ProjectManager {
           try {
             const data = await fs.readFile(projectJsonPath, 'utf-8');
             const project = JSON.parse(data);
+            project.codePath = normalizeCodePath(project.codePath);
             this.projects.set(entry.name, project);
           } catch (e) {
             // 跳过无效的目录
@@ -166,16 +363,22 @@ class ProjectManager {
 
   async create(data) {
     const id = uuidv4();
+    const normalizedCodePath = normalizeCodePath(data.codePath);
+    const defaultProjectCodePath = path.join(PROJECTS_DIR, id, 'src');
     const project = {
       id,
       name: data.name,
       description: data.description || '',
+      codePath: normalizedCodePath || defaultProjectCodePath,
       status: 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
     this.projects.set(id, project);
+    try {
+      await fs.mkdir(project.codePath, { recursive: true });
+    } catch (_e) {}
     await this.save(id);
     return project;
   }
@@ -191,7 +394,11 @@ class ProjectManager {
   async update(id, updates) {
     const project = this.projects.get(id);
     if (!project) return null;
-    Object.assign(project, updates, { updatedAt: new Date().toISOString() });
+    const sanitizedUpdates = { ...updates };
+    if (Object.prototype.hasOwnProperty.call(sanitizedUpdates, 'codePath')) {
+      sanitizedUpdates.codePath = normalizeCodePath(sanitizedUpdates.codePath);
+    }
+    Object.assign(project, sanitizedUpdates, { updatedAt: new Date().toISOString() });
     await this.save(id);
     return project;
   }
@@ -236,6 +443,10 @@ class SprintManager {
               try {
                 const data = await fs.readFile(sprintJsonPath, 'utf-8');
                 const sprint = JSON.parse(data);
+                if (!sprint.scenario) sprint.scenario = DEFAULT_SCENARIO;
+                if (!sprint.developerBackend || !['opencode', 'cursor_auto'].includes(sprint.developerBackend)) {
+                  sprint.developerBackend = 'opencode';
+                }
                 this.sprints.set(sprint.id, sprint);
               } catch (e) {}
             }
@@ -260,31 +471,53 @@ class SprintManager {
       throw new Error('projectId is required. Please select a project before creating a sprint.');
     }
 
+    const project = await this.projectManager.get(projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    const normalizedSprintCodePath = normalizeCodePath(data.localProjectPath);
+    const normalizedProjectCodePath = normalizeCodePath(project.codePath);
+
+    if (normalizedProjectCodePath && normalizedSprintCodePath && normalizedProjectCodePath !== normalizedSprintCodePath) {
+      const err = new Error('Project codePath mismatch');
+      err.code = 'PROJECT_CODE_PATH_MISMATCH';
+      err.expectedCodePath = normalizedProjectCodePath;
+      err.receivedCodePath = normalizedSprintCodePath;
+      throw err;
+    }
+
+    if (!normalizedProjectCodePath && normalizedSprintCodePath) {
+      project.codePath = normalizedSprintCodePath;
+      project.updatedAt = new Date().toISOString();
+      await this.projectManager.save(projectId);
+    }
+
     // Sprint ID 格式: {projectId}-{uuid}
     const shortUuid = uuidv4().slice(0, 8);
     const id = `${projectId}-${shortUuid}`;
     const sprintNumber = (this.sprints.size || 0) + 1;
 
+    const { scenario, roles } = resolveRolesForScenario(data.scenario);
+
+    const defaultDev =
+      process.env.DEVFORGE_DEVELOPER_BACKEND === 'cursor_auto' ? 'cursor_auto' : 'opencode';
     const sprint = {
       id,
       projectId,
+      scenario,
       name: data.name || `Sprint #${sprintNumber}`,
       goal: data.goal || '',
       rawInput: data.rawInput || '',
-      localProjectPath: data.localProjectPath || null,
+      localProjectPath: normalizedSprintCodePath || normalizedProjectCodePath || null,
       status: 'pending',
-      roles: [...DEFAULT_ROLES],
+      roles,
       currentRoleIndex: 0,
-      iterations: DEFAULT_ROLES.map((role, index) => ({
-        role,
-        roleInfo: ROLE_INFO[role],
-        status: 'pending',
-        userInput: '',
-        output: '',
-        history: [],
-        startedAt: null,
-        completedAt: null
-      })),
+      developerBackend:
+        data.developerBackend === 'cursor_auto' || data.developerBackend === 'opencode'
+          ? data.developerBackend
+          : defaultDev,
+      iterations: buildIterations(roles),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -295,7 +528,11 @@ class SprintManager {
   }
 
   async get(id) {
-    return this.sprints.get(id);
+    const sprint = this.sprints.get(id);
+    if (sprint && (!sprint.developerBackend || !['opencode', 'cursor_auto'].includes(sprint.developerBackend))) {
+      sprint.developerBackend = 'opencode';
+    }
+    return sprint;
   }
 
   async getByProject(projectId) {
@@ -345,9 +582,254 @@ class SprintManager {
 const projectManager = new ProjectManager();
 const sprintManager = new SprintManager(projectManager);
 
+function isChildProcessExited(proc) {
+  if (!proc) return true;
+  return proc.exitCode !== null || proc.signalCode !== null;
+}
+
+/** Map 中若残留已退出子进程，移除（close 未触发等边界情况） */
+function pruneDeadRunningAgent(runningKey) {
+  const proc = runningAgents.get(runningKey);
+  if (!proc) return;
+  if (isChildProcessExited(proc)) {
+    runningAgents.delete(runningKey);
+  }
+}
+
+/** 本进程 HTTP 自调用，复用 POST /execute 的校验与 spawn（如 tech_coach 完成后自动跑架构师） */
+async function triggerExecuteSprintRoleViaLoopback(sprintId, roleIndex, body = {}) {
+  const apiPort = process.env.PORT || 3000;
+  const url = `http://127.0.0.1:${apiPort}/api/sprints/${sprintId}/iterations/${roleIndex}/execute`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * sprint.json 里可能是 running，但进程已结束或服务器重启后 Map 为空。
+ * 读 sprint 时自愈，避免 UI 永远卡在「进行中」且无法点执行。
+ */
+async function reconcileStaleRunningIterations(sprint) {
+  if (!sprint?.iterations?.length) return false;
+  let changed = false;
+  for (let roleIndex = 0; roleIndex < sprint.iterations.length; roleIndex++) {
+    const iteration = sprint.iterations[roleIndex];
+    if (!iteration || iteration.status !== 'running') continue;
+    const runningKey = `${sprint.id}-${roleIndex}`;
+    pruneDeadRunningAgent(runningKey);
+    if (!runningAgents.has(runningKey)) {
+      if (roleIndex === 0) {
+        iteration.status = 'ready';
+        iteration.userInput = iteration.userInput || sprint.rawInput || '';
+      } else {
+        iteration.status = iteration.userInput ? 'ready' : 'waiting_input';
+      }
+      iteration.startedAt = null;
+      iteration.completedAt = null;
+      changed = true;
+    }
+  }
+  if (changed) await sprintManager.save(sprint.id);
+  return changed;
+}
+
 // 确保目录存在
 async function ensureDirs() {
   await fs.mkdir(PROJECTS_DIR, { recursive: true });
+}
+
+function readOpenCodeModels() {
+  try {
+    if (!fsSync.existsSync(OPENCODE_CONFIG_PATH)) return [];
+    const raw = fsSync.readFileSync(OPENCODE_CONFIG_PATH, 'utf-8');
+    const conf = JSON.parse(raw);
+    const providers = conf?.provider || {};
+    const out = [];
+    for (const [providerName, providerDef] of Object.entries(providers)) {
+      const models = providerDef?.models || {};
+      for (const modelName of Object.keys(models)) {
+        out.push(`${providerName}/${modelName}`);
+      }
+    }
+    return Array.from(new Set(out));
+  } catch (_e) {
+    return [];
+  }
+}
+
+function pickBestModel(models, candidates, fallback) {
+  for (const candidate of candidates) {
+    if (models.includes(candidate)) return candidate;
+  }
+  return fallback;
+}
+
+function getDefaultModelConfig() {
+  const available = readOpenCodeModels();
+  const bestDev = pickBestModel(
+    available,
+    [
+      'ciykj/gpt-5.4',
+      'ciykj/gpt-5.3-codex',
+      'ciykj/gpt-5.3-codex-spark',
+      'opencode/gpt-5-nano'
+    ],
+    'opencode/gpt-5-nano'
+  );
+
+  return {
+    ba: 'opencode/big-pickle',
+    product: 'opencode/qwen3.6-plus-free',
+    architect: 'opencode/qwen3.6-plus-free',
+    tech_coach: 'opencode/qwen3.6-plus-free',
+    developer: bestDev,
+    tester: 'opencode/qwen3.6-plus-free',
+    ops: 'opencode/gpt-5-nano',
+    evolver: 'opencode/gpt-5-nano',
+    ghost: 'opencode/big-pickle',
+    creative: 'opencode/big-pickle'
+  };
+}
+
+async function readModelConfig() {
+  try {
+    const data = await fs.readFile(MODELS_CONFIG_PATH, 'utf-8');
+    return JSON.parse(data);
+  } catch (_e) {
+    return getDefaultModelConfig();
+  }
+}
+
+function normalizeCodePath(inputPath) {
+  if (!inputPath || typeof inputPath !== 'string') return null;
+  const trimmed = inputPath.trim();
+  if (!trimmed) return null;
+  return path.resolve(trimmed);
+}
+
+function isPathInside(baseDir, targetPath) {
+  const base = path.resolve(baseDir);
+  const target = path.resolve(targetPath);
+  return target === base || target.startsWith(`${base}${path.sep}`);
+}
+
+function toSafeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseTestReportMarkdown(content) {
+  const text = String(content || '');
+  const readNumber = (patterns) => {
+    for (const re of patterns) {
+      const m = text.match(re);
+      if (m?.[1]) return toSafeNumber(m[1], 0);
+    }
+    return 0;
+  };
+
+  const summary = {
+    total: readNumber([/总(?:用例数|计)\D*(\d+)/i, /total\D*(\d+)/i]),
+    passed: readNumber([/通过\D*(\d+)/i, /passed\D*(\d+)/i]),
+    failed: readNumber([/失败\D*(\d+)/i, /failed\D*(\d+)/i]),
+    skipped: readNumber([/跳过\D*(\d+)/i, /skipped\D*(\d+)/i])
+  };
+
+  const pickMetric = (name) => {
+    const m = text.match(new RegExp(`${name}\\s*[:：]?\\s*([^\\n\\r]+)`, 'i'));
+    return m?.[1]?.trim() || null;
+  };
+
+  const performance = {};
+  const lcp = pickMetric('LCP');
+  const fid = pickMetric('FID');
+  const cls = pickMetric('CLS');
+  const loadTime = pickMetric('加载时间|load[_ ]?time');
+  if (lcp) performance.lcp = lcp;
+  if (fid) performance.fid = fid;
+  if (cls) performance.cls = cls;
+  if (loadTime) performance.load_time = loadTime;
+
+  return {
+    summary,
+    performance: Object.keys(performance).length > 0 ? performance : null,
+    testType: /regression/i.test(text)
+      ? 'regression'
+      : /smoke/i.test(text)
+      ? 'smoke'
+      : /e2e/i.test(text)
+      ? 'e2e'
+      : 'full'
+  };
+}
+
+async function collectReports({ projectId = null, sprintManagerRef }) {
+  const reports = [];
+  const sprints = Array.from(sprintManagerRef.sprints.values());
+
+  for (const sprint of sprints) {
+    if (projectId && sprint.projectId !== projectId) continue;
+
+    const outputDir = path.join(WORKSPACE_DIR, sprint.id, 'output');
+    const jsonPath = path.join(outputDir, 'test-report.json');
+    const mdPath = path.join(outputDir, 'test-report.md');
+
+    let source = null;
+    let parsed = null;
+    let timestamp = sprint.updatedAt || sprint.createdAt || new Date().toISOString();
+
+    try {
+      if (fsSync.existsSync(jsonPath)) {
+        const raw = await fs.readFile(jsonPath, 'utf-8');
+        const data = JSON.parse(raw);
+        source = 'json';
+        parsed = {
+          summary: {
+            total: toSafeNumber(data?.summary?.total, 0),
+            passed: toSafeNumber(data?.summary?.passed, 0),
+            failed: toSafeNumber(data?.summary?.failed, 0),
+            skipped: toSafeNumber(data?.summary?.skipped, 0)
+          },
+          performance: data?.performance || null,
+          testType: data?.testType || 'full'
+        };
+        const stat = await fs.stat(jsonPath);
+        timestamp = stat.mtime.toISOString();
+      } else if (fsSync.existsSync(mdPath)) {
+        const raw = await fs.readFile(mdPath, 'utf-8');
+        source = 'md';
+        parsed = parseTestReportMarkdown(raw);
+        const stat = await fs.stat(mdPath);
+        timestamp = stat.mtime.toISOString();
+      }
+    } catch (e) {
+      // ignore broken single report
+    }
+
+    if (!parsed) continue;
+
+    reports.push({
+      reportId: `${sprint.id}-test-report`,
+      projectId: sprint.projectId,
+      sprintId: sprint.id,
+      pipelineId: sprint.id,
+      timestamp,
+      testType: parsed.testType,
+      summary: parsed.summary,
+      performance: parsed.performance,
+      source
+    });
+  }
+
+  reports.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return reports;
 }
 
 // ==================== REST API ====================
@@ -402,6 +884,33 @@ app.put('/api/projects/:id', async (req, res) => {
   }
 });
 
+// 更新项目代码路径（每个项目唯一代码库）
+app.put('/api/projects/:id/code-path', async (req, res) => {
+  try {
+    const project = await projectManager.get(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const normalized = normalizeCodePath(req.body?.codePath);
+    if (normalized && !fsSync.existsSync(normalized)) {
+      return res.status(400).json({ error: 'Code path does not exist' });
+    }
+    if (normalized) {
+      const stat = await fs.stat(normalized);
+      if (!stat.isDirectory()) {
+        return res.status(400).json({ error: 'Code path is not a directory' });
+      }
+    }
+
+    const updated = await projectManager.update(req.params.id, { codePath: normalized });
+    io.emit('project:updated', updated);
+    res.json(updated);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 删除项目
 app.delete('/api/projects/:id', async (req, res) => {
   try {
@@ -426,6 +935,14 @@ app.post('/api/projects/:projectId/sprints', async (req, res) => {
     io.emit('sprint:created', sprint);
     res.status(201).json(sprint);
   } catch (e) {
+    if (e?.code === 'PROJECT_CODE_PATH_MISMATCH') {
+      return res.status(409).json({
+        error: 'Project code path mismatch',
+        code: e.code,
+        expectedCodePath: e.expectedCodePath,
+        receivedCodePath: e.receivedCodePath
+      });
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -447,6 +964,7 @@ app.get('/api/sprints/:id', async (req, res) => {
     if (!sprint) {
       return res.status(404).json({ error: 'Sprint not found' });
     }
+    await reconcileStaleRunningIterations(sprint);
     res.json(sprint);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -538,7 +1056,7 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/confirm', async (req, res)
       iteration.output = req.body.output;
       
       // 同步更新到 output 文件
-      const workspacePath = path.join(ROOT, '..', 'workspace', sprint.id);
+      const workspacePath = path.join(ROOT, 'workspace', sprint.id);
       const outputDir = path.join(workspacePath, 'output');
       await fs.mkdir(outputDir, { recursive: true });
       
@@ -548,6 +1066,7 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/confirm', async (req, res)
       const fileNameMap = {
         'ba': 'ba-analysis.md',
         'product': 'prd.md',
+        'tech_coach': 'tech-implementation.md',
         'architect': 'openspec.md',
         'developer': 'dev-summary.md',
         'tester': 'test-report.md',
@@ -583,12 +1102,17 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/confirm', async (req, res)
       }
     }
 
-    // 移动到下一个角色，并设置为 ready 状态
+    // 移动到下一个角色；仅当下一角色尚未跑完时设为 ready（避免把已 completed 的架构师降级为 ready，导致技术设计阶段一直显示「等待输入」）
     if (roleIndex < sprint.iterations.length - 1) {
       sprint.currentRoleIndex = roleIndex + 1;
       sprint.status = 'running';
-      // 设置下一角色为 ready，允许前端执行
-      sprint.iterations[sprint.currentRoleIndex].status = 'ready';
+      const nextIt = sprint.iterations[sprint.currentRoleIndex];
+      if (
+        nextIt &&
+        !['completed', 'confirmed', 'running'].includes(nextIt.status)
+      ) {
+        nextIt.status = 'ready';
+      }
     } else {
       sprint.status = 'completed';
       sprint.currentRoleIndex = sprint.iterations.length;
@@ -597,6 +1121,68 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/confirm', async (req, res)
     await sprintManager.save(sprint.id);
     io.emit('iteration:confirmed', { sprintId: sprint.id, roleIndex, iteration, nextRoleIndex: sprint.currentRoleIndex });
     res.json({ success: true, nextRoleIndex: sprint.currentRoleIndex });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * 将某流程阶段内所有角色标为 confirmed（用于卡住时解锁下一阶段，继续测试）
+ * body: { stageId: 'tech-design' }（与前端阶段 id 一致）
+ */
+app.post('/api/sprints/:sprintId/mark-stage-confirmed', async (req, res) => {
+  try {
+    const { stageId } = req.body || {};
+    if (!stageId || typeof stageId !== 'string') {
+      return res.status(400).json({ error: 'body.stageId 必填（如 tech-design）' });
+    }
+
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+
+    const scenario = sprint.scenario || DEFAULT_SCENARIO;
+    const roles = getRolesForStageId(scenario, stageId);
+    if (!roles?.length) {
+      return res.status(400).json({ error: `未知阶段: ${stageId}（scenario=${scenario}）` });
+    }
+
+    const now = new Date().toISOString();
+    let updated = 0;
+    for (const iteration of sprint.iterations) {
+      if (roles.includes(iteration.role)) {
+        iteration.status = 'confirmed';
+        iteration.completedAt = iteration.completedAt || now;
+        updated++;
+      }
+    }
+
+    const order = ROUTES[scenario] || ROUTES[DEFAULT_SCENARIO];
+    const lastRole = roles[roles.length - 1];
+    const lastIdx = order.indexOf(lastRole);
+    if (lastIdx >= 0 && lastIdx < order.length - 1) {
+      const nextRole = order[lastIdx + 1];
+      const nextIterIdx = sprint.iterations.findIndex((i) => i.role === nextRole);
+      if (nextIterIdx >= 0) {
+        sprint.currentRoleIndex = nextIterIdx;
+        const ni = sprint.iterations[nextIterIdx];
+        if (ni && !['completed', 'confirmed', 'running'].includes(ni.status)) {
+          ni.status = 'ready';
+        }
+      }
+    }
+
+    sprint.status = 'running';
+    await sprintManager.save(sprint.id);
+    io.emit('sprint:updated', { sprintId: sprint.id, stageId, roles });
+    res.json({
+      success: true,
+      stageId,
+      roles,
+      updated,
+      currentRoleIndex: sprint.currentRoleIndex
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -661,9 +1247,10 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/rerun', async (req, res) 
       });
     }
 
-    // 重置状态，准备重新执行
+    // 重置状态，准备重新执行（由前端或用户再点「执行」时启动；前端会在 rerun 后立即 execute）
     iteration.status = 'ready';
-    iteration.startedAt = new Date().toISOString();
+    iteration.startedAt = null;
+    iteration.completedAt = null;
     iteration.output = '';
 
     await sprintManager.save(sprint.id);
@@ -689,11 +1276,73 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/output', async (req, res) 
     }
 
     iteration.output = req.body.output || '';
-    iteration.status = req.body.status || 'completed';
-    iteration.completedAt = iteration.completedAt || new Date().toISOString();
+    const explicit = req.body.status;
+    const trimmedOut = String(iteration.output || '').trim();
+    if (explicit !== undefined && explicit !== '') {
+      iteration.status = explicit;
+    } else if (trimmedOut === '正在执行...') {
+      // 执行器占位：仍在跑 OpenCode，不能记为已完成
+      iteration.status = 'running';
+    } else {
+      // 未显式传 status 时默认「进行中」：多步角色会多次 PUT 合并输出，
+      // 若默认 completed 会导致尚未跑完所有步骤 UI 就显示已完成
+      iteration.status = 'running';
+    }
+    if (iteration.status === 'completed') {
+      iteration.completedAt = iteration.completedAt || new Date().toISOString();
+    } else {
+      iteration.completedAt = null;
+    }
+
+    // Agent 完成后把有效产出写入下一角色的 userInput（排除占位文案，避免误传「正在执行...」）
+    const out = (iteration.output || '').trim();
+    const isPlaceholder =
+      !out ||
+      out === '正在执行...' ||
+      out.startsWith('执行失败') ||
+      out.includes('执行失败:');
+    if (iteration.status === 'completed' && !isPlaceholder && roleIndex < sprint.iterations.length - 1) {
+      const nextIt = sprint.iterations[roleIndex + 1];
+      if (nextIt) {
+        if (iteration.role === 'tech_coach' && nextIt.role === 'architect') {
+          nextIt.userInput = iteration.output;
+          if (['pending', 'waiting_input', 'failed'].includes(nextIt.status)) {
+            nextIt.status = 'ready';
+          }
+        } else if (!(nextIt.userInput || '').trim()) {
+          nextIt.userInput = iteration.output;
+          if (nextIt.status === 'pending') nextIt.status = 'ready';
+        }
+      }
+    }
 
     await sprintManager.save(sprint.id);
     io.emit('iteration:output:updated', { sprintId: sprint.id, roleIndex, iteration });
+
+    const nextAfterTech = sprint.iterations[roleIndex + 1];
+    const chainTechToArchitect =
+      iteration.role === 'tech_coach' &&
+      iteration.status === 'completed' &&
+      !isPlaceholder &&
+      nextAfterTech?.role === 'architect' &&
+      nextAfterTech.status !== 'running';
+
+    if (chainTechToArchitect) {
+      const nextIdx = roleIndex + 1;
+      setImmediate(() => {
+        triggerExecuteSprintRoleViaLoopback(sprint.id, nextIdx, {})
+          .then(() => {
+            console.log(`[chain] 已自动启动架构师 (roleIndex=${nextIdx})`);
+            io.emit('iteration:chain:started', {
+              sprintId: sprint.id,
+              fromRoleIndex: roleIndex,
+              toRoleIndex: nextIdx
+            });
+          })
+          .catch((e) => console.warn('[chain] tech_coach→architect 自动执行失败:', e.message));
+      });
+    }
+
     res.json(iteration);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -703,11 +1352,102 @@ app.put('/api/sprints/:sprintId/iterations/:roleIndex/output', async (req, res) 
 // 触发 Agent 执行
 const AI_AGENT_EXECUTOR_SPRINT = path.join(ROOT, 'sprint-agent-executor.js');
 
+app.get('/api/harness/stats', async (req, res) => {
+  try {
+    const h = await ensureHarness();
+    if (!h) {
+      return res.json({
+        enabled: false,
+        message: 'Harness 未初始化（可能缺少 opencode 或池启动失败）',
+        maxConcurrentSprintExecutors: MAX_CONCURRENT_SPRINT_EXECUTORS,
+        activeSprintExecutors,
+        queuedSprintExecutors: sprintExecutorWaitQueue.length
+      });
+    }
+    res.json({
+      enabled: true,
+      ...h.getStats(),
+      maxConcurrentSprintExecutors: MAX_CONCURRENT_SPRINT_EXECUTORS,
+      activeSprintExecutors,
+      queuedSprintExecutors: sprintExecutorWaitQueue.length
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/harness/health', async (req, res) => {
+  try {
+    const h = await ensureHarness();
+    if (!h) {
+      return res.json({
+        enabled: false,
+        healthy: false,
+        errorCode: 'HARNESS_UNAVAILABLE',
+        message: 'Harness 未初始化（可能缺少 opencode 或池启动失败）',
+        config: {
+          required: HARNESS_REQUIRED,
+          warmupOnStart: HARNESS_WARMUP_ON_START
+        }
+      });
+    }
+
+    const [health, stats] = await Promise.all([
+      h.healthCheck(),
+      Promise.resolve(h.getStats())
+    ]);
+
+    const opencodeHealth = health?.opencode || null;
+    const attachUrl = stats?.opencode?.attachUrl || null;
+
+    res.json({
+      enabled: true,
+      healthy: !!(opencodeHealth?.ok || health?.poolHealth?.isHealthy),
+      initialized: !!health?.initialized,
+      poolHealth: health?.poolHealth || null,
+      cacheHitRate: health?.cacheHitRate ?? null,
+      pools: stats?.pools || {},
+      scheduler: stats?.scheduler || {},
+      opencode: {
+        attachUrl,
+        health: opencodeHealth
+      },
+      config: {
+        required: HARNESS_REQUIRED,
+        warmupOnStart: HARNESS_WARMUP_ON_START
+      }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, errorCode: 'HARNESS_HEALTH_CHECK_FAILED' });
+  }
+});
+
 app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res) => {
   try {
+    const h = await ensureHarness();
+    if (!h && HARNESS_REQUIRED) {
+      return res.status(503).json({
+        error: 'Harness 初始化失败且当前配置要求 Harness 可用',
+        errorCode: 'HARNESS_REQUIRED_INIT_FAILED'
+      });
+    }
+    if (!h) {
+      console.warn('[Harness] unavailable, continue execution by degradation mode');
+    }
+
     const sprintId = req.params.sprintId;
     const roleIndex = parseInt(req.params.roleIndex);
-    const stepIndex = req.body.stepIndex !== undefined ? parseInt(req.body.stepIndex) : null;
+    const runningKey = `${sprintId}-${roleIndex}`;
+    let stepIndex = null;
+    if (req.body.stepIndex !== undefined && req.body.stepIndex !== null && req.body.stepIndex !== '') {
+      const n = parseInt(req.body.stepIndex, 10);
+      if (!Number.isNaN(n)) stepIndex = n;
+    }
+    let requestedTaskIndex = null;
+    if (req.body.taskIndex !== undefined && req.body.taskIndex !== null && req.body.taskIndex !== '') {
+      const n = parseInt(req.body.taskIndex, 10);
+      if (!Number.isNaN(n) && n >= 1) requestedTaskIndex = n;
+    }
 
     const sprint = await sprintManager.get(sprintId);
     if (!sprint) {
@@ -719,8 +1459,65 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
       return res.status(404).json({ error: 'Iteration not found' });
     }
 
+    pruneDeadRunningAgent(runningKey);
+    const liveProc = runningAgents.get(runningKey);
+    if (iteration.status === 'running' && liveProc && !isChildProcessExited(liveProc)) {
+      return res.status(409).json({
+        error: '该角色正在执行中，请稍候',
+        errorCode: 'ALREADY_RUNNING'
+      });
+    }
+
+    // 自愈：如果 sprint.json 里残留 running，但当前进程表里并没有对应 agent，
+    // 则重置为可执行状态（避免 UI 永远提示“正在运行”但实际没跑）。
+    if (iteration.status === 'running' && !runningAgents.has(runningKey)) {
+      // product 允许直接执行（使用 sprint.rawInput 作为输入）；其他角色回到 waiting_input/ready
+      if (roleIndex === 0) {
+        iteration.status = 'ready';
+        iteration.userInput = iteration.userInput || sprint.rawInput || '';
+      } else {
+        iteration.status = iteration.userInput ? 'ready' : 'waiting_input';
+      }
+      iteration.startedAt = null;
+      iteration.completedAt = null;
+      await sprintManager.save(sprint.id);
+    }
+
+    if (req.body.developerBackend === 'opencode' || req.body.developerBackend === 'cursor_auto') {
+      sprint.developerBackend = req.body.developerBackend;
+    }
+
+    // Developer 角色强制使用单任务执行模式（基于游标）
+    let effectiveTaskIndex = null;
+    if (iteration.role === 'developer') {
+      const tasksPath = await resolveLatestTasksPathForSprint(sprint);
+      if (!tasksPath || !fsSync.existsSync(tasksPath)) {
+        return res.status(400).json({ error: '未找到 tasks.md，无法进行单任务执行' });
+      }
+      const tasksMd = await fs.readFile(tasksPath, 'utf-8');
+      const tasks = parseTasksFromMarkdown(tasksMd);
+      if (!tasks.length) {
+        return res.status(400).json({ error: 'tasks.md 没有可执行任务（checkbox）' });
+      }
+
+      const cursor = Number.isFinite(Number(iteration.developerTaskCursor))
+        ? Math.max(1, Number(iteration.developerTaskCursor))
+        : 1;
+      const candidate = requestedTaskIndex || cursor;
+      if (candidate < 1 || candidate > tasks.length) {
+        return res.status(400).json({ error: `任务索引越界: ${candidate}，总任务数 ${tasks.length}` });
+      }
+      effectiveTaskIndex = candidate;
+      stepIndex = getDeveloperStepIndexByTaskIndex(effectiveTaskIndex);
+      iteration.developerRunningTaskIndex = effectiveTaskIndex;
+    }
+
     // 检查是否有用户输入
-    if (!iteration.userInput && roleIndex > 0) {
+    if (roleIndex === 0 && !iteration.userInput) {
+      iteration.userInput = sprint.rawInput || '';
+      iteration.status = iteration.status === 'pending' ? 'ready' : iteration.status;
+      await sprintManager.save(sprint.id);
+    } else if (!iteration.userInput && roleIndex > 0) {
       return res.status(400).json({ error: '需要用户先输入' });
     }
 
@@ -739,47 +1536,60 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
     iteration.startedAt = new Date().toISOString();
     await sprintManager.save(sprint.id);
 
-    // 读取模型配置
-    let modelConfig = {}
-    try {
-      const configPath = path.join(ROOT, 'model-config.json')
-      const configData = await fs.readFile(configPath, 'utf-8')
-      modelConfig = JSON.parse(configData)
-    } catch (e) {
-      // 使用默认模型配置
-      modelConfig = {
-        ba: 'opencode/big-pickle',
-        product: 'opencode/qwen3.6-plus-free',
-        architect: 'opencode/qwen3.6-plus-free',
-        developer: 'opencode/gpt-5-nano',
-        tester: 'opencode/qwen3.6-plus-free',
-        ops: 'opencode/gpt-5-nano',
-        evolver: 'opencode/gpt-5-nano',
-        ghost: 'opencode/big-pickle',
-        creative: 'opencode/big-pickle'
-      }
-    }
+    // 读取模型配置（优先 model-config.json，fallback 到 opencode config 推断）
+    const modelConfig = await readModelConfig()
 
     // 启动 Agent Executor 进程
-    console.log(`🚀 启动 Agent Executor for sprint ${sprintId.slice(0, 8)}, role ${roleIndex}, step ${stepIndex}`);
+    console.log(
+      `🚀 启动 Agent Executor for sprint ${sprintId.slice(0, 8)}, role ${roleIndex}, step ${stepIndex ?? 'all'}`
+    );
 
     const apiPort = process.env.PORT || 3000;
     const roleName = iteration.role;
-    const model = modelConfig[roleName] || 'opencode/big-pickle';
+    const model = modelConfig[roleName] || modelConfig.developer || 'opencode/big-pickle';
     
     // 构建参数: sprintId, roleIndex, model, stepIndex
     const args = [AI_AGENT_EXECUTOR_SPRINT, sprintId, roleIndex.toString(), model];
     if (stepIndex !== null) {
       args.push(stepIndex.toString());
     }
-    
+
+    await acquireSprintExecutorSlot();
+
+    const defaultDevBackend =
+      process.env.DEVFORGE_DEVELOPER_BACKEND === 'cursor_auto' ? 'cursor_auto' : 'opencode';
+    const developerBackendForEnv =
+      sprint.developerBackend === 'cursor_auto' || sprint.developerBackend === 'opencode'
+        ? sprint.developerBackend
+        : defaultDevBackend;
+
+    const extraEnv = {};
+    if (effectiveTaskIndex) {
+      extraEnv.DEVFORGE_DEVELOPER_SINGLE_TASK = 'true';
+      extraEnv.DEVFORGE_DEVELOPER_SINGLE_TASK_INDEX = String(effectiveTaskIndex);
+    }
+
+    const attachUrl =
+      !opencodeAttachDisabled() && h?.getStats?.()?.opencode?.attachUrl
+        ? String(h.getStats().opencode.attachUrl)
+        : '';
+
     const agentProc = spawn('node', args, {
       cwd: ROOT,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, API_BASE: `http://localhost:${apiPort}`, AGENT_MODEL: model }
+      env: {
+        ...process.env,
+        API_BASE: `http://localhost:${apiPort}`,
+        AGENT_MODEL: model,
+        DEVFORGE_DEVELOPER_BACKEND: developerBackendForEnv,
+        // 显式覆盖，避免父进程曾注入 attach 而子进程仍继承 DEVFORGE_OPENCODE_ATTACH_URL
+        DEVFORGE_OPENCODE_ATTACH_URL: attachUrl,
+        OPENCODE_ATTACH_URL: attachUrl,
+        ...extraEnv
+      }
     });
 
-    runningAgents.set(`${sprintId}-${roleIndex}`, agentProc);
+    runningAgents.set(runningKey, agentProc);
 
     agentProc.stdout.on('data', (data) => {
       const output = data.toString();
@@ -796,10 +1606,17 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
       console.error(`[agent:error:${roleIndex}] ${output}`);
     });
 
+    agentProc.on('error', (err) => {
+      console.error(`[agent] spawn error:`, err);
+      releaseSprintExecutorSlot();
+      runningAgents.delete(`${sprintId}-${roleIndex}`);
+    });
+
     agentProc.on('close', (code) => {
       console.log(`[agent] Process exited with code ${code}`);
       runningAgents.delete(`${sprintId}-${roleIndex}`);
-      
+      releaseSprintExecutorSlot();
+
       // 等待 agent 完全结束并保存输出
       setTimeout(async () => {
         try {
@@ -808,16 +1625,39 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
             const iteration = sprint.iterations[roleIndex];
             const output = iteration.output;
             
-            if (output && output !== '正在执行...' && !output.includes('执行失败')) {
-              // 输出已保存，标记为完成
-              iteration.status = 'completed';
-              iteration.completedAt = new Date().toISOString();
+            if (code !== 0) {
+              if (iteration.status === 'running') {
+                iteration.status = 'failed';
+                iteration.developerRunningTaskIndex = null;
+                await sprintManager.save(sprintId);
+              }
+            } else if (output && output !== '正在执行...' && !output.includes('执行失败')) {
+              // 进程正常退出：仅当仍为 running 时兜底标为完成（executor 成功时通常会先 PUT completed）
+              if (iteration.status === 'running') {
+                iteration.status = 'completed';
+                iteration.completedAt = new Date().toISOString();
+                // Developer 角色完成后自动推进游标
+                if (iteration.role === 'developer') {
+                  const ran = Number(iteration.developerRunningTaskIndex || effectiveTaskIndex || 0);
+                  if (ran >= 1) {
+                    iteration.developerTaskCursor = ran + 1;
+                  }
+                }
+                iteration.developerRunningTaskIndex = null;
+                await sprintManager.save(sprintId);
+                io.emit('iteration:completed', { sprintId, roleIndex });
+                console.log(`[step-complete] 角色 ${roleIndex} 已完成（close 兜底）`);
+              } else if (iteration.status === 'completed') {
+                iteration.developerRunningTaskIndex = null;
+                await sprintManager.save(sprintId);
+              }
+            } else if (output && output.includes('执行失败')) {
+              iteration.status = 'failed';
+              iteration.developerRunningTaskIndex = null;
               await sprintManager.save(sprintId);
-              io.emit('iteration:completed', { sprintId, roleIndex });
-              console.log(`[step-complete] 角色 ${roleIndex} 已完成`);
-               
             } else {
               iteration.status = 'waiting_input';
+              iteration.developerRunningTaskIndex = null;
               await sprintManager.save(sprintId);
               io.emit('iteration:confirmed', { sprintId, roleIndex });
             }
@@ -1135,6 +1975,157 @@ app.post('/api/pipelines/:id/start', async (req, res) => {
   }
 });
 
+// ==================== 报告聚合 API ====================
+
+app.get('/api/reports', async (req, res) => {
+  try {
+    const reports = await collectReports({ sprintManagerRef: sprintManager });
+    res.json(reports);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/projects/:projectId/reports', async (req, res) => {
+  try {
+    const project = await projectManager.get(req.params.projectId);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const reports = await collectReports({
+      projectId: req.params.projectId,
+      sprintManagerRef: sprintManager
+    });
+    res.json(reports);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ==================== 项目代码只读 API ====================
+
+app.get('/api/projects/:id/code/files', async (req, res) => {
+  try {
+    const project = await projectManager.get(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const codePath = normalizeCodePath(project.codePath);
+    if (!codePath) {
+      return res.status(400).json({ error: 'Project code path is not configured' });
+    }
+    if (!fsSync.existsSync(codePath)) {
+      return res.status(404).json({ error: 'Project code path does not exist' });
+    }
+
+    const stat = await fs.stat(codePath);
+    if (!stat.isDirectory()) {
+      return res.status(400).json({ error: 'Project code path is not a directory' });
+    }
+
+    const files = [];
+
+    async function scanDir(dir, baseDir, depth = 0) {
+      if (depth > 8) return;
+      const items = await fs.readdir(dir, { withFileTypes: true });
+      for (const item of items) {
+        if (SKIP_DIRS.has(item.name)) continue;
+        const itemPath = path.join(dir, item.name);
+        const relPath = path.relative(baseDir, itemPath).split(path.sep).join('/');
+        if (item.isDirectory()) {
+          files.push({ path: relPath, name: item.name, type: 'directory', size: 0 });
+          await scanDir(itemPath, baseDir, depth + 1);
+        } else {
+          const itemStat = await fs.stat(itemPath);
+          files.push({ path: relPath, name: item.name, type: 'file', size: itemStat.size });
+        }
+      }
+    }
+
+    await scanDir(codePath, codePath, 0);
+    files.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.path.localeCompare(b.path);
+    });
+
+    res.json({ codePath, files });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/projects/:id/code/content', async (req, res) => {
+  try {
+    const project = await projectManager.get(req.params.id);
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    const codePath = normalizeCodePath(project.codePath);
+    if (!codePath) {
+      return res.status(400).json({ error: 'Project code path is not configured' });
+    }
+
+    const fileRelPath = String(req.query.file || '').trim();
+    if (!fileRelPath) {
+      return res.status(400).json({ error: 'file is required' });
+    }
+
+    const fullPath = path.resolve(codePath, fileRelPath);
+    if (!isPathInside(codePath, fullPath)) {
+      return res.status(403).json({ error: 'Invalid file path' });
+    }
+    if (!fsSync.existsSync(fullPath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const stat = await fs.stat(fullPath);
+    if (!stat.isFile()) {
+      return res.status(400).json({ error: 'Path is not a file' });
+    }
+
+    const fd = await fs.open(fullPath, 'r');
+    let preview;
+    let bytesRead;
+    try {
+      const buffer = Buffer.alloc(MAX_PREVIEW_BYTES + 1);
+      const readResult = await fd.read(buffer, 0, buffer.length, 0);
+      bytesRead = readResult.bytesRead;
+      preview = buffer.subarray(0, bytesRead);
+    } finally {
+      await fd.close();
+    }
+
+    const hasBinary = preview.includes(0);
+    if (hasBinary) {
+      return res.json({
+        type: 'binary',
+        path: fileRelPath,
+        name: path.basename(fullPath),
+        size: stat.size,
+        content: null,
+        truncated: false
+      });
+    }
+
+    const truncated = bytesRead > MAX_PREVIEW_BYTES;
+    const textBuffer = truncated ? preview.subarray(0, MAX_PREVIEW_BYTES) : preview;
+    const content = textBuffer.toString('utf-8');
+
+    res.json({
+      type: 'file',
+      path: fileRelPath,
+      name: path.basename(fullPath),
+      size: stat.size,
+      content,
+      truncated
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ==================== WebSocket ====================
 
 io.on('connection', (socket) => {
@@ -1175,30 +2166,29 @@ io.on('connection', (socket) => {
 // 获取模型配置
 app.get('/api/config/models', async (req, res) => {
   try {
-    const configPath = path.join(ROOT, 'model-config.json');
-    const data = await fs.readFile(configPath, 'utf-8');
-    res.json(JSON.parse(data));
+    const conf = await readModelConfig();
+    res.json(conf);
   } catch (e) {
-    // 返回默认配置
-    res.json({
-      ba: 'opencode/big-pickle',
-      product: 'opencode/qwen3.6-plus-free',
-      architect: 'opencode/qwen3.6-plus-free',
-      developer: 'opencode/gpt-5-nano',
-      tester: 'opencode/qwen3.6-plus-free',
-      ops: 'opencode/gpt-5-nano',
-      evolver: 'opencode/gpt-5-nano',
-      ghost: 'opencode/big-pickle',
-      creative: 'opencode/big-pickle'
-    });
+    res.json(getDefaultModelConfig());
+  }
+});
+
+// 获取 OpenCode 可用模型列表（用于前端下拉，避免手填拼错）
+app.get('/api/config/models/available', async (_req, res) => {
+  try {
+    const available = readOpenCodeModels();
+    const fallback = Object.values(getDefaultModelConfig());
+    const merged = Array.from(new Set([...available, ...fallback])).sort((a, b) => a.localeCompare(b));
+    res.json({ models: merged });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
 // 保存模型配置
 app.put('/api/config/models', async (req, res) => {
   try {
-    const configPath = path.join(ROOT, 'model-config.json');
-    await fs.writeFile(configPath, JSON.stringify(req.body, null, 2), 'utf-8');
+    await fs.writeFile(MODELS_CONFIG_PATH, JSON.stringify(req.body, null, 2), 'utf-8');
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1226,9 +2216,20 @@ app.get('/api/sprints/:sprintId/file', async (req, res) => {
     } catch (e) {}
     
     const projectPath = path.join(ROOT, 'projects', projectId);
+
+    // 历史兼容：提示词曾只落盘到 output/，而 Dashboard 预期 tester/*.md
+    const legacyTesterAliases = [];
+    if (file === 'tester/test-report.md') {
+      legacyTesterAliases.push(path.join(baseWorkspacePath, 'output', 'test-report.md'));
+    }
+    if (file === 'tester/security-report.md') {
+      legacyTesterAliases.push(path.join(baseWorkspacePath, 'output', 'security-report.md'));
+      legacyTesterAliases.push(path.join(baseWorkspacePath, 'tester', 'security-scan.md'));
+    }
     
     // 尝试多个可能的位置：先项目目录（代码/OpenSpec），再 workspace（执行记录）
     const possiblePaths = [
+      ...legacyTesterAliases,
       path.join(projectPath, file),                             // 项目根目录文件
       path.join(projectPath, 'src', file),                      // src/ 代码文件
       path.join(projectPath, 'openspec', file),                 // openspec/ 文件
@@ -1439,6 +2440,104 @@ app.get('/api/sprints/:sprintId/files', async (req, res) => {
   }
 });
 
+app.get('/api/sprints/:sprintId/developer/task-runs', async (req, res) => {
+  try {
+    const sprintId = req.params.sprintId;
+    const dir = path.join(ROOT, 'workspace', sprintId, 'developer-task-runs');
+    if (!fsSync.existsSync(dir)) {
+      return res.json({ items: [] });
+    }
+    const entries = await fs.readdir(dir);
+    const jsonFiles = entries.filter((f) => f.endsWith('.json')).sort((a, b) => a.localeCompare(b));
+    const items = [];
+    for (const file of jsonFiles) {
+      const full = path.join(dir, file);
+      try {
+        const raw = await fs.readFile(full, 'utf-8');
+        const data = JSON.parse(raw);
+        items.push({
+          taskIndex: data.taskIndex,
+          totalTasks: data.totalTasks,
+          title: data.title,
+          status: data.status,
+          riskLevel: data.riskLevel,
+          errorCode: data.errorCode || '',
+          message: data.message || '',
+          noChangeReason: data.noChangeReason || '',
+          writtenCount: data.writtenCount || 0,
+          fileCount: Array.isArray(data.files) ? data.files.length : 0,
+          updatedAt: data.updatedAt || ''
+        });
+      } catch (_e) {}
+    }
+    res.json({ items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/sprints/:sprintId/developer/task-runs/:taskIndex', async (req, res) => {
+  try {
+    const sprintId = req.params.sprintId;
+    const taskIndex = parseInt(req.params.taskIndex, 10);
+    if (!Number.isFinite(taskIndex) || taskIndex < 1) {
+      return res.status(400).json({ error: 'taskIndex 非法' });
+    }
+    const filePath = path.join(
+      ROOT,
+      'workspace',
+      sprintId,
+      'developer-task-runs',
+      `${String(taskIndex).padStart(3, '0')}.json`
+    );
+    if (!fsSync.existsSync(filePath)) {
+      return res.status(404).json({ error: 'task run not found' });
+    }
+    const raw = await fs.readFile(filePath, 'utf-8');
+    const data = JSON.parse(raw);
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/sprints/:sprintId/developer/state', async (req, res) => {
+  try {
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found' });
+    const it = (sprint.iterations || []).find((x) => x.role === 'developer');
+    if (!it) return res.status(404).json({ error: 'Developer iteration not found' });
+
+    const tasksPath = await resolveLatestTasksPathForSprint(sprint);
+    let totalTasks = 0;
+    let currentTask = null;
+    if (tasksPath && fsSync.existsSync(tasksPath)) {
+      const tasksMd = await fs.readFile(tasksPath, 'utf-8');
+      const tasks = parseTasksFromMarkdown(tasksMd);
+      totalTasks = tasks.length;
+      const cursor = Math.max(1, Number(it.developerTaskCursor || 1));
+      if (cursor >= 1 && cursor <= tasks.length) {
+        currentTask = {
+          taskIndex: cursor,
+          text: tasks[cursor - 1].text,
+          h2: tasks[cursor - 1].h2,
+          h3: tasks[cursor - 1].h3
+        };
+      }
+    }
+
+    res.json({
+      roleIndex: it.roleIndex,
+      cursor: Math.max(1, Number(it.developerTaskCursor || 1)),
+      runningTaskIndex: it.developerRunningTaskIndex || null,
+      totalTasks,
+      currentTask
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 启动服务器
 async function start() {
   await ensureDirs();
@@ -1449,6 +2548,9 @@ async function start() {
   const HOST = process.env.HOST || '0.0.0.0';
   const localIP = getLocalIP();
   httpServer.listen(PORT, HOST, () => {
+    if (HARNESS_WARMUP_ON_START) {
+      ensureHarness().catch(() => {});
+    }
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
 ║          AI Coding PasS API Server                    ║

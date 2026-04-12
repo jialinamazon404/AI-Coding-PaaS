@@ -5,186 +5,352 @@
 @tailwind utilities;
 
 :root {
-  --vue-dark: #0f0f23;
-  --vue-darker: #0a0a1a;
-  --vue-card: #1e1e3f;
-  --vue-border: #2a2a4a;
-  --vue-primary: #42b883;
-  --vue-secondary: #35495e;
-  --vue-accent: #3ac7a9;
+  /* 饿了么主题色 - 纯白背景 */
+  --el-color-primary: #409eff;
+  --el-color-primary-light-3: #79bbff;
+  --el-color-primary-light-5: #a0cfff;
+  --el-color-primary-light-7: #c6e2ff;
+  --el-color-primary-light-8: #d9ecff;
+  --el-color-primary-light-9: #ecf5ff;
+  --el-color-success: #67c23a;
+  --el-color-warning: #e6a23c;
+  --el-color-danger: #f56c6c;
+  --el-color-info: #909399;
+
+  /* 纯白背景 */
+  --bg-page: #ffffff;
+  --bg-card: #ffffff;
+  --bg-header: #ffffff;
+  --bg-hover: #f5f7fa;
+  --bg-base: #ffffff;
+  --text-primary: #303133;
+  --text-regular: #606266;
+  --text-secondary: #909399;
+  --text-placeholder: #c0c4cc;
+  --border-color: #dcdfe6;
+  --border-color-light: #e4e7ed;
+
+  /* 点击 / 过渡 */
+  --df-ease-out: cubic-bezier(0.33, 1, 0.68, 1);
+  --df-duration-fast: 0.12s;
+  --df-duration: 0.18s;
 }
 
-body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', 'Roboto', sans-serif;
-  background: linear-gradient(180deg, var(--vue-darker) 0%, var(--vue-dark) 100%);
-  color: #ffffff;
+html {
+  -webkit-tap-highlight-color: rgba(64, 158, 255, 0.12);
+}
+
+html, body {
+  background: var(--bg-page) !important;
+  color: var(--text-primary);
   min-height: 100vh;
 }
+
+/* 可点击元素：指针与按压反馈（不覆盖 disabled） */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+a[href],
+label[for],
+.cursor-pointer {
+  cursor: pointer;
+}
+
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']) {
+  user-select: none;
+}
+
+/* Element Plus 按钮：过渡 + 按压态 */
+.el-button {
+  transition:
+    transform var(--df-duration-fast) var(--df-ease-out),
+    filter var(--df-duration-fast) ease,
+    box-shadow var(--df-duration) ease,
+    background-color var(--df-duration) ease,
+    border-color var(--df-duration) ease,
+    color var(--df-duration) ease;
+}
+
+.el-button:not(.is-disabled):active {
+  transform: scale(0.98);
+  filter: brightness(0.94);
+}
+
+.el-button.is-text:not(.is-disabled):active,
+.el-button.is-link:not(.is-disabled):active {
+  transform: scale(0.97);
+  filter: none;
+  opacity: 0.85;
+}
+
+.el-button.is-disabled,
+.el-button.is-loading {
+  transform: none !important;
+  filter: none !important;
+}
+
+.el-button:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-3);
+  outline-offset: 2px;
+}
+
 
 #app {
   min-height: 100vh;
+  background: var(--bg-page) !important;
 }
 
-/* Apple-style scrollbar - dark theme */
+/* Element Plus 组件白色背景 */
+.el-card {
+  --el-card-bg-color: var(--bg-card);
+  --el-card-border-color: var(--border-color-light);
+  background: #fff !important;
+}
+
+.el-card__body {
+  background: #fff !important;
+}
+
+.el-input__wrapper {
+  background-color: #fff !important;
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+}
+
+.el-textarea__inner {
+  background-color: #fff !important;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--el-color-primary);
+  --el-button-border-color: var(--el-color-primary);
+}
+
+.el-dialog {
+  --el-dialog-bg-color: #fff;
+  background: #fff !important;
+}
+
+.el-menu {
+  background: #fff !important;
+  border-right: none !important;
+}
+
+.el-select-dropdown {
+  background: #fff !important;
+}
+
+.el-dropdown-menu {
+  background: #fff !important;
+}
+
+/* 滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+  background: #f5f5f5;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(66, 184, 131, 0.3);
+  background: #c1c1c1;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(66, 184, 131, 0.5);
+  background: #a8a8a8;
 }
 
-/* Override for light theme classes */
-.bg-apple-gray {
-  background: transparent !important;
-}
-
-.bg-white {
-  background: var(--vue-card) !important;
-}
-
-.bg-gray-50 {
-  background: rgba(255, 255, 255, 0.05) !important;
-}
-
-.bg-gray-100 {
-  background: rgba(255, 255, 255, 0.1) !important;
-}
-
-.bg-gray-200 {
-  background: rgba(255, 255, 255, 0.15) !important;
-}
-
-.bg-gray-800 {
-  background: var(--vue-card) !important;
-}
-
-.bg-gray-900 {
-  background: var(--vue-darker) !important;
-}
-
-/* Text colors */
-.text-apple-black {
-  color: #ffffff !important;
-}
-
-.text-apple-subtle {
-  color: #a0aec0 !important;
-}
-
-.text-gray-300 {
-  color: #a0aec0 !important;
-}
-
-.text-gray-400 {
-  color: #718096 !important;
-}
-
-/* Border colors */
-.border-gray-100 {
-  border-color: var(--vue-border) !important;
-}
-
-.border-gray-200 {
-  border-color: var(--vue-border) !important;
-}
-
-.border-gray-700 {
-  border-color: var(--vue-border) !important;
-}
-
-/* Button base */
-@layer components {
-  .btn-vue {
-    @apply px-4 py-2 rounded-vue font-medium transition-all duration-300;
-    @apply bg-gradient-to-r from-vue-primary to-vue-secondary;
-    @apply text-white hover:shadow-vue-glow;
-  }
-  
-  .btn-vue-outline {
-    @apply px-4 py-2 rounded-vue font-medium transition-all duration-300;
-    @apply border border-vue-primary text-vue-primary;
-    @apply hover:bg-vue-primary hover:text-white;
-  }
-
-  .card-vue {
-    @apply bg-vue-card rounded-vue border border-vue-border;
-    @apply shadow-vue-card transition-all duration-300;
-  }
-
-  .card-vue-hover {
-    @apply card-vue hover:border-vue-primary hover:shadow-vue-glow;
-  }
-}
-
-/* Status colors - Vue theme */
+/* 状态颜色 */
 .status-running {
-  @apply bg-vue-primary;
-  animation: vue-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background: var(--el-color-warning);
 }
 
 .status-completed {
-  @apply bg-[#30D158];
+  background: var(--el-color-success);
 }
 
 .status-failed {
-  @apply bg-[#FF3B30];
+  background: var(--el-color-danger);
 }
 
 .status-pending {
-  @apply bg-[#86868B];
+  background: var(--el-color-info);
 }
 
-.status-stopped {
-  @apply bg-[#FF9500];
+/* 通用白色背景类 */
+.bg-white {
+  background: #fff !important;
 }
 
-@keyframes vue-pulse {
-  0%, 100% { 
-    opacity: 1; 
-    box-shadow: 0 0 10px rgba(66, 184, 131, 0.5);
-  }
-  50% { 
-    opacity: 0.7; 
-    box-shadow: 0 0 20px rgba(66, 184, 131, 0.8);
-  }
+.bg-gray-50 {
+  background: #fafafa !important;
 }
 
-/* Input focus styles */
-input:focus, textarea:focus, select:focus {
-  @apply outline-none ring-2 ring-vue-primary ring-opacity-50;
+.bg-gray-100 {
+  background: #f5f5f5 !important;
 }
 
-/* Glass effect */
-.glass {
-  background: rgba(30, 30, 63, 0.8);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+.bg-gray-200 {
+  background: #eeeeee !important;
 }
 
-/* Gradient text */
-.gradient-text {
-  background: linear-gradient(135deg, #42b883 0%, #3ac7a9 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+/* 文字颜色 */
+.text-gray-400 {
+  color: #999 !important;
 }
 
-/* Glow effects */
-.glow-green {
-  box-shadow: 0 0 15px rgba(66, 184, 131, 0.4);
+.text-gray-500 {
+  color: #666 !important;
 }
 
-.glow-green-hover:hover {
-  box-shadow: 0 0 25px rgba(66, 184, 131, 0.6);
+/* 边框颜色 */
+.border {
+  border-color: #e4e7ed !important;
+}
+
+/* Card 样式 */
+.card-vue {
+  background: #fff !important;
+  border: 1px solid #e4e7ed !important;
+  border-radius: 8px;
+}
+
+.card-vue-hover:hover {
+  border-color: #409eff !important;
+}
+
+/* 可点击列表行：项目列表、冲刺列表等 */
+.df-list-row {
+  position: relative;
+  z-index: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color 0.16s ease,
+    box-shadow 0.1s ease;
+}
+
+.df-list-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background-color 0.16s ease;
+  border-radius: 0 3px 3px 0;
+}
+
+.df-list-row:hover {
+  background-color: #f0f7ff !important;
+}
+
+.df-list-row:hover::before {
+  background: #409eff;
+}
+
+.df-list-row:active {
+  background-color: #d9ecff !important;
+  box-shadow: inset 0 2px 12px rgba(64, 158, 255, 0.22);
+  transition-duration: 0.05s;
+}
+
+/* 点击后不显示描边框，仅保留与悬停一致的整行高亮（键盘 Tab 时） */
+.df-list-row:focus {
+  outline: none;
+}
+
+.df-list-row:focus-visible {
+  background-color: #f0f7ff !important;
+}
+
+.df-list-row:focus-visible::before {
+  background: #409eff;
+}
+
+.df-list-row-chevron {
+  transition:
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.df-list-row:hover .df-list-row-chevron {
+  color: #409eff !important;
+  transform: translateX(4px);
+}
+
+.df-list-row:active .df-list-row-chevron {
+  transform: translateX(2px);
+}
+
+/* Steps 样式优化 */
+.el-step__head.is-finish {
+  color: #67c23a;
+  border-color: #67c23a;
+}
+
+.el-step__title.is-finish {
+  color: #67c23a;
+}
+
+.el-step__head.is-process {
+  color: #409eff;
+  border-color: #409eff;
+}
+
+.el-step__title.is-process {
+  color: #409eff;
+}
+
+/* Timeline 样式 */
+.el-timeline-item__node {
+  background-color: #409eff;
+}
+
+/* 表格样式 */
+.el-table {
+  background: #fff !important;
+  --el-table-bg-color: #fff;
+  --el-table-tr-bg-color: #fff;
+  --el-table-header-bg-color: #fafafa;
+}
+
+.el-table th.el-table__cell {
+  background: #fafafa !important;
+}
+
+/* 输入框聚焦 */
+.el-input__wrapper:focus-within {
+  box-shadow: 0 0 0 1px #409eff inset !important;
+}
+
+.el-textarea__inner:focus {
+  box-shadow: 0 0 0 1px #409eff inset !important;
+}
+
+/* Tag 样式 */
+.el-tag--success {
+  --el-tag-bg-color: #f0f9eb;
+  --el-tag-border-color: #e1f3d8;
+  --el-tag-text-color: #67c23a;
+}
+
+.el-tag--warning {
+  --el-tag-bg-color: #fdf6ec;
+  --el-tag-border-color: #faecd8;
+  --el-tag-text-color: #e6a23c;
+}
+
+.el-tag--danger {
+  --el-tag-bg-color: #fef0f0;
+  --el-tag-border-color: #fde2e2;
+  --el-tag-text-color: #f56c6c;
+}
+
+.el-tag--info {
+  --el-tag-bg-color: #f4f4f5;
+  --el-tag-border-color: #e9e9eb;
+  --el-tag-text-color: #909399;
 }

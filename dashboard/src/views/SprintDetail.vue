@@ -1,1262 +1,1224 @@
 <template>
-  <div v-if="sprint" class="space-y-6">
+  <div v-if="sprint" class="sprint-detail">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-      <div class="flex items-center space-x-4">
-        <button @click="$emit('back')" class="text-gray-400 hover:text-white transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <div>
-          <div class="flex items-center space-x-3">
-            <h1 class="text-xl font-semibold text-white">{{ sprint.name }}</h1>
-            <div class="flex items-center space-x-1">
-              <span class="px-2 py-0.5 bg-vue-darker rounded text-xs text-gray-400 font-mono">
-                {{ sprint.id.slice(0, 8) }}
-              </span>
-              <button
-                @click="copySprintId"
-                class="p-1.5 text-gray-400 hover:text-vue-primary transition-colors"
-                title="复制完整 ID"
-              >
-                <svg v-if="!showCopySuccess" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <svg v-else class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-            </div>
-            <span :class="sprintStatusClass(sprint.status)" class="px-2 py-0.5 rounded text-xs">
-              {{ sprintStatusText(sprint.status) }}
-            </span>
+    <div class="sprint-header">
+      <div class="header-left">
+        <el-button text @click="$emit('back')" class="back-btn">
+          <el-icon><ArrowLeft /></el-icon>
+        </el-button>
+        <div class="header-info">
+          <h2 class="sprint-title">{{ sprint.name }}</h2>
+          <div class="header-meta">
+            <el-tag :type="getStatusType(sprint.status)" size="small" effect="dark">
+              {{ getStatusText(sprint.status) }}
+            </el-tag>
+            <el-tag v-if="scenarioLabel" type="info" size="small" effect="plain">
+              {{ scenarioLabel.title }}
+            </el-tag>
+            <span class="sprint-id">{{ sprint.id.slice(0, 12) }}</span>
           </div>
-          <p class="text-gray-400 text-sm mt-1">{{ sprint.goal || sprint.rawInput }}</p>
         </div>
       </div>
-      <div class="flex items-center space-x-3">
-        <button
-          v-if="sprint.status === 'pending'"
-          @click="startSprint"
-          class="px-4 py-2 bg-gradient-to-r from-vue-primary to-vue-secondary text-white rounded-vue text-sm font-medium transition-all hover:shadow-vue-glow"
-        >
-          开始冲刺 ▶
-        </button>
-        <button
-          v-if="sprint.status === 'running'"
-          @click="showCancelConfirm = true"
-          class="px-4 py-2 bg-red-600/20 border border-red-600/50 text-red-400 hover:bg-red-600/30 rounded-vue text-sm transition-all"
-        >
+      <div class="header-actions">
+        <el-button v-if="sprint.status === 'pending'" type="primary" @click="startSprint">
+          开始冲刺 <el-icon><VideoPlay /></el-icon>
+        </el-button>
+        <el-button v-if="sprint.status === 'running'" type="danger" plain @click="showCancelConfirm = true">
           取消冲刺
-        </button>
+        </el-button>
       </div>
     </div>
 
-    <!-- 角色流程 -->
-    <div class="card-vue p-6">
-      <h2 class="text-lg font-medium text-white mb-6">执行流程</h2>
-      
-      <div class="flex items-center justify-between overflow-x-auto pb-4">
-        <div 
-          v-for="(iteration, index) in sprint.iterations" 
-          :key="iteration.role"
-          class="flex items-center"
+    <!-- 执行流程 -->
+    <div class="execution-flow">
+      <h3 class="section-title">执行流程</h3>
+      <div class="pipeline-steps" role="list">
+        <div
+          v-for="(stage, index) in pipelineStages"
+          :key="stage.id"
+          class="pipeline-step"
+          :class="{
+            'is-active': activeStageIndex === index,
+            'is-current': currentStageIndex === index,
+            'is-completed': stage.status === 'completed' || stage.status === 'confirmed',
+            'is-failed': stage.status === 'failed',
+            'is-running': stage.status === 'running'
+          }"
+          role="listitem"
         >
-          <!-- Stage Card -->
-          <div 
-            class="flex flex-col items-center px-4 py-3 rounded-vue min-w-[120px] cursor-pointer transition-all hover:scale-105"
-            :class="getIterationClass(index, iteration)"
-            @click="selectIteration(index)"
+          <button
+            type="button"
+            class="pipeline-card"
+            :disabled="!isStageAccessible(index)"
+            @click="selectStage(index)"
           >
-<div class="w-10 h-10 rounded-full flex items-center justify-center mb-2"
-             :class="getIterationIconBg(index, iteration)"
-            >
-              <span v-if="iteration.status === 'confirmed'" class="text-white">✓</span>
-              <span v-else-if="iteration.status === 'completed' && isIterationFullyComplete" class="text-white">✓</span>
-              <span v-else-if="iteration.status === 'completed' && !isIterationFullyComplete" class="text-yellow-400">⏳</span>
-              <span v-else-if="iteration.status === 'running' || iteration.status === 'waiting_input'" class="w-3 h-3 bg-white rounded-full animate-pulse"></span>
-              <span v-else class="text-lg">{{ iteration.roleInfo?.icon || '🤖' }}</span>
-            </div>
-            <span class="text-sm font-medium text-white">{{ iteration.roleInfo?.name || iteration.role }}</span>
-            <span class="text-xs mt-1" :class="getIterationStatusTextClass(iteration.status)">
-              {{ getIterationStatusText(iteration.status, index === selectedIterationIndex ? isIterationFullyComplete : (iteration.status === 'completed')) }}
-            </span>
-          </div>
-          
-          <!-- Arrow -->
-          <div v-if="index < sprint.iterations.length - 1" class="mx-2">
-            <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 当前角色详情 -->
-    <div v-if="selectedIterationIndex !== null" class="card-vue">
-      <div class="px-6 py-4 border-b border-vue-border flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <span class="text-2xl">{{ currentIteration?.roleInfo?.icon || '🤖' }}</span>
-          <div>
-            <h2 class="text-lg font-medium text-white">{{ currentIteration?.roleInfo?.name || '-' }}</h2>
-            <p class="text-gray-400 text-sm">{{ getIterationStatusText(currentIteration?.status, isIterationFullyComplete) }}</p>
-          </div>
-        </div>
-        <button @click="selectedIterationIndex = null" class="text-gray-400 hover:text-white">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      <div class="p-6 space-y-6">
-        <!-- 角色产出大纲 -->
-        <div class="bg-vue-darker rounded-vue p-4">
-          <h3 class="text-gray-400 text-sm mb-2">角色产出大纲</h3>
-          
-          <!-- 显示上一角色的执行记录 -->
-          <div v-if="executionLog" class="space-y-3">
-            <div class="flex items-center space-x-3 bg-vue-card rounded-vue p-3">
-              <span class="text-2xl">{{ currentIteration?.roleInfo?.icon || '🤖' }}</span>
-              <div>
-                <div class="text-white font-medium">{{ currentIteration?.roleInfo?.name || '-' }}</div>
-                <div class="text-xs text-green-400">✅ 已完成</div>
+            <div class="pipeline-card-top">
+              <div class="pipeline-badge">
+                <el-icon v-if="stage.status === 'completed' || stage.status === 'confirmed'"><Check /></el-icon>
+                <el-icon v-else-if="stage.status === 'failed'"><Close /></el-icon>
+                <el-icon v-else-if="stage.status === 'running'"><Loading class="is-loading" /></el-icon>
+                <span v-else>{{ stage.icon }}</span>
               </div>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-3 text-sm">
-              <div class="bg-vue-card rounded-vue p-3">
-                <div class="text-gray-500 text-xs mb-1">🛠️ 使用 Skill</div>
-                <div class="text-white">{{ executionLog.skill }}</div>
-              </div>
-              <div class="bg-vue-card rounded-vue p-3">
-                <div class="text-gray-500 text-xs mb-1">⏱️ 耗时</div>
-                <div class="text-white">{{ executionLog.duration }}</div>
-              </div>
-            </div>
-            
-            <div class="bg-vue-card rounded-vue p-3">
-              <div class="text-gray-500 text-xs mb-2">📝 执行步骤</div>
-              <div class="flex flex-wrap gap-2">
-                <span 
-                  v-for="step in executionLog.steps" 
-                  :key="step.id"
-                  class="px-2 py-1 bg-vue-darker rounded text-xs text-vue-primary"
-                >
-                  {{ step.name }}
-                </span>
-              </div>
-            </div>
-            
-            <div v-if="executionLog.outputFiles?.length > 0" class="bg-vue-card rounded-vue p-3">
-              <div class="text-gray-500 text-xs mb-2">📁 产出文件</div>
-              <div class="space-y-1">
-                <div 
-                  v-for="file in executionLog.outputFiles" 
-                  :key="file.path"
-                  class="flex items-center justify-between text-sm"
-                >
-                  <span class="text-gray-300">{{ file.name }}</span>
-                  <button 
-                    @click="openPreview(file.path)"
-                    class="text-vue-primary hover:text-vue-secondary"
-                  >
-                    查看
-                  </button>
+              <div class="pipeline-title">
+                <div class="pipeline-title-row">
+                  <span class="pipeline-name">{{ stage.name }}</span>
+                  <el-tag size="small" :type="getStageStatusType(stage.status)" effect="plain">
+                    {{ getStageStatusText(stage.status) }}
+                  </el-tag>
                 </div>
-              </div>
-            </div>
-            
-            <div v-if="executionLog.outputPreview" class="bg-vue-card rounded-vue p-3">
-              <div class="flex items-center justify-between mb-2">
-                <div class="text-gray-500 text-xs">📄 输出预览</div>
-                <button 
-                  @click="showOutputPreview = !showOutputPreview"
-                  class="text-xs text-vue-primary hover:text-vue-secondary"
-                >
-                  {{ showOutputPreview ? '收起' : '展开' }}
-                </button>
-              </div>
-              <div v-if="showOutputPreview" class="text-xs text-gray-400 bg-vue-darker rounded p-3 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
-                {{ executionLog.outputPreview }}
-              </div>
-              <div v-else class="text-xs text-gray-500 truncate">
-                {{ executionLog.outputPreview.slice(0, 100) }}...
-              </div>
-            </div>
-            
-            <div class="flex justify-end pt-2">
-              <button
-                @click="submitUserInput"
-                class="px-4 py-2 bg-gradient-to-r from-vue-primary to-vue-secondary text-white rounded-vue text-sm font-medium transition-all hover:shadow-vue-glow"
-              >
-                执行 {{ currentIteration?.roleInfo?.name }} ✓
-              </button>
-            </div>
-          </div>
-          
-          <!-- Product 角色：直接显示冲刺需求 -->
-          <div v-else-if="isProductRole && sprint?.rawInput" class="space-y-3">
-            <div class="text-white bg-vue-card rounded-vue p-3 max-h-[200px] overflow-auto">
-              {{ sprint.rawInput }}
-            </div>
-            <div class="flex justify-end space-x-3">
-              <button
-                v-if="isProductRole && currentIteration?.status === 'completed'"
-                @click="rerunIteration"
-                class="px-4 py-2 bg-yellow-600/20 border border-yellow-600/50 text-yellow-400 hover:bg-yellow-600/30 rounded-vue text-sm transition-all"
-              >
-                重新生成 🔄
-              </button>
-              <button
-                @click="submitUserInput"
-                :disabled="!canAutoExecute"
-                class="px-4 py-2 bg-gradient-to-r from-vue-primary to-vue-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-vue text-sm font-medium transition-all hover:shadow-vue-glow"
-              >
-                执行 ✓
-              </button>
-            </div>
-          </div>
-          
-          <div v-else class="text-gray-500 italic">
-            等待上一角色完成...
-          </div>
-          
-          <!-- Tester 角色：环境地址输入 -->
-          <div v-if="isTesterRole" class="mt-4 space-y-3 bg-vue-card rounded-vue p-4">
-            <h3 class="text-gray-400 text-sm font-medium">🧪 测试环境配置</h3>
-            <div class="text-xs text-gray-500">
-              如有测试环境地址，Tester 将执行完整的运行时测试；否则执行静态代码审查
-            </div>
-            <div class="flex items-center space-x-2">
-              <input
-                v-model="testEnvironmentUrl"
-                type="text"
-                placeholder="输入测试环境地址，如 http://localhost:3000"
-                class="flex-1 bg-vue-darker border border-vue-border rounded-vue px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-vue-primary"
-              />
-              <button
-                @click="saveEnvironmentUrl"
-                class="px-3 py-2 bg-vue-primary/20 border border-vue-primary/50 text-vue-primary hover:bg-vue-primary/30 rounded-vue text-sm whitespace-nowrap"
-              >
-                保存地址
-              </button>
-            </div>
-            <div v-if="testEnvironmentUrl" class="text-xs text-green-400">
-              ✅ 已配置环境: {{ testEnvironmentUrl }}
-            </div>
-          </div>
-          
-          <!-- 其他角色：用户输入 -->
-          <div v-if="canInput && !executionLog" class="space-y-3">
-            <textarea
-              v-model="userInput"
-              rows="4"
-              class="w-full bg-vue-darker border border-vue-border rounded-vue px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-vue-primary resize-y min-h-[100px] max-h-[300px] overflow-auto"
-              :placeholder="getInputPlaceholder()"
-            ></textarea>
-            <div class="flex justify-between">
-              <div class="flex items-center space-x-2">
-                <input 
-                  type="checkbox" 
-                  v-model="confirmModify" 
-                  id="confirmModify"
-                  class="w-4 h-4 rounded bg-vue-darker border-vue-border"
-                />
-                <label for="confirmModify" class="text-yellow-400 text-sm">
-                  确认修改需求（低效行为）
-                </label>
-              </div>
-              <button
-                v-if="!isProductRole && currentIteration?.status === 'completed'"
-                @click="rerunIteration"
-                class="px-4 py-2 bg-yellow-600/20 border border-yellow-600/50 text-yellow-400 hover:bg-yellow-600/30 rounded-vue text-sm transition-all"
-              >
-                重新生成 🔄
-              </button>
-              <button
-                @click="submitUserInput"
-                :disabled="!userInput.trim()"
-                class="px-4 py-2 bg-gradient-to-r from-vue-primary to-vue-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-vue text-sm font-medium transition-all hover:shadow-vue-glow"
-              >
-                确认输入 ✓
-              </button>
-            </div>
-          </div>
-          
-          <div v-else-if="currentIteration?.userInput" class="text-white max-h-[300px] overflow-auto bg-vue-darker rounded-vue p-3">
-            <pre class="text-sm whitespace-pre-wrap font-mono">{{ formatAsJson(currentIteration.userInput) }}</pre>
-          </div>
-          <div v-else class="text-gray-500 italic">
-            等待用户输入...
-          </div>
-        </div>
-
-        <!-- Agent 输出 -->
-        <div class="bg-vue-darker rounded-vue p-4">
-          <h3 class="text-gray-400 text-sm mb-2">Agent 输出</h3>
-          <div class="text-xs text-gray-500 mb-2">
-            状态: {{ currentIteration?.status }}
-            <span v-if="currentIteration?.status === 'running'" class="ml-2 text-vue-primary">
-              (步骤 {{ currentStepIndex + 1 }})
-            </span>
-          </div>
-          
-          <!-- Tester 角色：显示摘要 -->
-          <div v-if="currentIteration?.role === 'tester' && testerSummary" class="space-y-3">
-            <div v-if="testerSummary.type === 'environment'" class="bg-yellow-900/30 border border-yellow-700 rounded-vue p-4">
-              <div class="flex items-center space-x-2 text-yellow-400">
-                <span class="text-xl">⚠️</span>
-                <span class="font-medium">{{ testerSummary.message }}</span>
-              </div>
-              <div class="mt-3 text-sm text-yellow-300/70">
-                可选择"确认并继续"跳过运行时测试，或补充环境地址后重新执行
-              </div>
-              <div class="mt-3 flex items-center space-x-2">
-                <input
-                  v-model="testEnvironmentUrl"
-                  type="text"
-                  placeholder="输入测试环境地址，如 http://localhost:3000"
-                  class="flex-1 bg-vue-darker border border-vue-border rounded-vue px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-vue-primary"
-                />
-                <button
-                  @click="saveEnvironmentUrl"
-                  class="px-3 py-2 bg-vue-primary/20 border border-vue-primary/50 text-vue-primary hover:bg-vue-primary/30 rounded-vue text-sm"
-                >
-                  保存地址
-                </button>
-              </div>
-              <button
-                @click="skipAndContinue"
-                class="mt-3 w-full px-4 py-2 bg-yellow-600/20 border border-yellow-600/50 text-yellow-400 hover:bg-yellow-600/30 rounded-vue text-sm font-medium transition-all"
-              >
-                确认并继续（跳过运行时测试）➡
-              </button>
-            </div>
-            <div v-else-if="testerSummary.type === 'bugs'" class="bg-red-900/30 border border-red-700 rounded-vue p-4">
-              <div class="flex items-center space-x-2 text-red-400">
-                <span class="text-xl">🐛</span>
-                <span class="font-medium">发现 {{ testerSummary.count }} 个 Bug</span>
-              </div>
-            </div>
-            <div v-else-if="testerSummary.type === 'issues'" class="bg-orange-900/30 border border-orange-700 rounded-vue p-4">
-              <div class="flex items-center space-x-2 text-orange-400">
-                <span class="text-xl">⚠️</span>
-                <span class="font-medium">{{ testerSummary.message }}</span>
-              </div>
-            </div>
-            <div v-else class="bg-green-900/30 border border-green-700 rounded-vue p-4">
-              <div class="flex items-center space-x-2 text-green-400">
-                <span class="text-xl">✅</span>
-                <span class="font-medium">{{ testerSummary.message }}</span>
-              </div>
-            </div>
-            <div class="text-gray-400 text-sm">
-              完整报告保存在 workspace 中
-            </div>
-          </div>
-          
-          <!-- 输出文件列表 -->
-          <div v-else-if="currentIteration?.output || currentIteration?.status === 'running' || (isProductRole && currentIteration?.status === 'waiting_input')" class="space-y-4">
-            <!-- 文件列表显示 -->
-            <div class="space-y-3">
-              <h3 class="text-gray-400 text-sm font-medium mb-4">
-                📁 输出文件
-                <span v-if="currentIteration?.status === 'running'" class="text-yellow-400 ml-2">(执行中...)</span>
-              </h3>
-              <div 
-                v-for="file in currentOutputFiles" 
-                :key="file.path"
-                class="flex items-center justify-between bg-vue-darker rounded-vue p-3 border border-vue-border hover:border-vue-primary/50 transition-colors"
-                :class="{ 'opacity-50': file.loading }"
-              >
-                <div class="flex items-center space-x-3">
-                  <span v-if="file.loading" class="text-xl animate-spin">⏳</span>
-                  <span v-else class="text-xl">{{ file.icon }}</span>
-                  <div>
-                    <div class="text-gray-200 text-sm font-medium">
-                      {{ file.name }}
-                      <span v-if="file.loading" class="text-yellow-400 text-xs ml-2">生成中...</span>
-                      <span v-else-if="!file.exists && !file.loading" class="text-gray-500 text-xs ml-2">(未生成)</span>
-                    </div>
-                    <div class="text-gray-500 text-xs">{{ (file.source === 'project' ? projectBasePath : workspaceBasePath) + file.path }}</div>
+                <div v-if="stage.agents?.length" class="pipeline-meta">
+                  <div class="pipeline-meta-label">Agents</div>
+                  <div class="pipeline-meta-items">
+                    <span v-for="a in stageAgentsSorted(stage)" :key="a.role" class="pipeline-agent">
+                      <span class="pipeline-agent-icon">{{ a.icon }}</span>
+                      <span class="pipeline-agent-name">{{ a.name }}</span>
+                    </span>
                   </div>
                 </div>
-                <div class="flex space-x-2">
-                  <button
-                    v-if="file.exists && !file.loading"
-                    @click="openPreview(file)"
-                    class="px-3 py-1.5 bg-purple-600/20 text-purple-400 hover:bg-purple-600/30 rounded text-xs transition-colors"
-                  >
-                    预览
-                  </button>
-                  <button
-                    v-if="file.exists && !file.loading"
-                    @click="openFile(file.path, file.source)"
-                    class="px-3 py-1.5 bg-vue-primary/20 text-vue-primary hover:bg-vue-primary/30 rounded text-xs transition-colors"
-                  >
-                    打开
-                  </button>
-                  <button
-                    v-if="file.exists && !file.loading"
-                    @click="downloadFile(file.path, file.source)"
-                    class="px-3 py-1.5 bg-gray-600/20 text-gray-300 hover:bg-gray-600/40 rounded text-xs transition-colors"
-                  >
-                    下载
-                  </button>
-                  <span v-if="file.loading" class="px-3 py-1.5 text-gray-500 text-xs">
-                    等待...
-                  </span>
-                  <span v-if="!file.exists && !file.loading" class="px-3 py-1.5 text-gray-600 text-xs">
-                    -
-                  </span>
+                <div v-if="stage.skills?.length" class="pipeline-meta">
+                  <div class="pipeline-meta-label">Skills</div>
+                  <div class="pipeline-meta-items pipeline-skills" :title="stage.skills.join(', ')">
+                    {{ formatStageSkills(stage.skills) }}
+                  </div>
                 </div>
               </div>
             </div>
-            
-            <!-- 可编辑输出文本框 -->
-            <div v-if="currentIteration?.status === 'completed'" class="mt-4 pt-4 border-t border-vue-border">
-              <div class="flex items-center justify-between mb-2">
-                <h3 class="text-gray-400 text-sm font-medium">
-                  📝 输出内容（可编辑）
-                </h3>
+
+            <div v-if="currentStageIndex === index" class="pipeline-current-indicator">
+              当前管道
+            </div>
+          </button>
+
+          <div v-if="index < pipelineStages.length - 1" class="pipeline-connector" aria-hidden="true">
+            <div class="pipeline-connector-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 当前阶段详情 -->
+    <div v-if="currentStage" class="stage-detail">
+      <div class="stage-header">
+        <div class="stage-header-left">
+          <span class="stage-icon">{{ currentStage.icon }}</span>
+          <div>
+            <h3 class="stage-title">{{ currentStage.name }}</h3>
+            <p class="stage-desc">{{ currentStage.description }}</p>
+            <div v-if="currentStage.agents?.length" class="agents-row" style="margin-top: 8px;">
+              <span
+                v-for="a in stageAgentsSorted(currentStage)"
+                :key="a.role"
+                class="agent-chip"
+              >
+                <span class="agent-icon">{{ a.icon }}</span>
+                <span class="agent-name">{{ a.name }}</span>
+              </span>
+            </div>
+            <div v-if="currentStage.skills?.length" class="skills-row" style="margin-top: 6px;">
+              <el-tag
+                v-for="sk in currentStage.skills"
+                :key="sk"
+                size="small"
+                effect="plain"
+                class="skill-tag"
+              >
+                {{ sk }}
+              </el-tag>
+            </div>
+          </div>
+        </div>
+        <div class="stage-actions">
+          <el-button 
+            v-if="!isDeveloperStageSelected" 
+            type="primary" 
+            :loading="isExecuting"
+            @click="executeCurrentStage"
+          >
+            <el-icon><VideoPlay /></el-icon> 执行当前阶段
+          </el-button>
+          <el-button 
+            v-if="!isDeveloperStageSelected && getRerunIterationForStage(currentStage)"
+            :loading="isExecuting"
+            @click="rerunCurrentStage"
+          >
+            <el-icon><RefreshRight /></el-icon> 重新执行
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 用户输入 -->
+      <div v-if="currentIterationNeedsInput" class="user-input-section">
+        <h4 class="detail-section-title">
+          <el-icon><Edit /></el-icon>
+          用户输入
+        </h4>
+        <el-input
+          v-model="userInput"
+          type="textarea"
+          :rows="4"
+          :placeholder="getInputPlaceholder()"
+        />
+        <div class="user-input-actions">
+          <el-button type="primary" @click="confirmInput">
+            确认并执行 <el-icon><Check /></el-icon>
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 输出内容 -->
+      <div v-if="selectedStageOutput" class="detail-section">
+        <h4 class="detail-section-title">
+          <el-icon><Document /></el-icon>
+          Agent 输出
+        </h4>
+        <el-input
+          v-model="editableOutput"
+          type="textarea"
+          :rows="12"
+          placeholder="Agent 输出内容..."
+          class="output-textarea"
+        />
+        <div class="output-actions">
+          <el-button @click="copyOutput">
+            <el-icon><CopyDocument /></el-icon> 复制
+          </el-button>
+          <el-button type="success" @click="confirmAndNextStage">
+            <el-icon><Check /></el-icon> 确认输出，进入下一阶段
+          </el-button>
+        </div>
+      </div>
+
+      <!-- Developer Task Console（仅 Developer 阶段，显示在 Agent 输出之后） -->
+      <div v-if="isDeveloperStageSelected" class="detail-section developer-task-console">
+        <h4 class="detail-section-title">
+          <el-icon><Connection /></el-icon>
+          Developer Task Console（手动逐条 + Diff）
+        </h4>
+
+        <div class="developer-console-top">
+          <div class="developer-console-stat">
+            <span class="label">当前游标</span>
+            <strong>{{ developerTaskState?.cursor || 1 }} / {{ developerTaskState?.totalTasks || 0 }}</strong>
+          </div>
+          <div class="developer-console-stat" v-if="developerTaskState?.currentTask">
+            <span class="label">当前任务</span>
+            <span class="value">{{ developerTaskState.currentTask.text }}</span>
+          </div>
+          <div class="developer-console-actions">
+            <el-button
+              type="primary"
+              :loading="developerTaskExecuting"
+              :disabled="isExecuting || developerRoleIndex === null"
+              @click="executeNextDeveloperTask"
+            >
+              <el-icon><VideoPlay /></el-icon> 执行下一条
+            </el-button>
+            <el-button :loading="developerTaskLoading" @click="loadDeveloperTaskConsole">
+              刷新
+            </el-button>
+          </div>
+        </div>
+
+        <div class="developer-console-body">
+          <div class="run-list">
+            <div class="run-list-title">执行记录</div>
+            <div class="run-list-items">
+              <button
+                v-for="run in developerTaskRuns"
+                :key="run.taskIndex"
+                class="run-item"
+                :class="{
+                  active: selectedTaskRunIndex === run.taskIndex,
+                  fail: run.status === 'TASK_FAIL',
+                  warn: run.status === 'TASK_WARN'
+                }"
+                @click="selectDeveloperTaskRun(run.taskIndex)"
+              >
+                <span class="idx">#{{ run.taskIndex }}</span>
+                <span class="status">{{ run.status?.replace('TASK_', '') || 'END' }}</span>
+                <span class="title">{{ run.title }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="run-detail" v-if="selectedTaskRunDetail">
+            <div class="run-detail-head">
+              <div>
+                <strong>#{{ selectedTaskRunDetail.taskIndex }} {{ selectedTaskRunDetail.title }}</strong>
+                <div class="meta">
+                  <el-tag size="small" :type="selectedTaskRunDetail.status === 'TASK_FAIL' ? 'danger' : selectedTaskRunDetail.status === 'TASK_WARN' ? 'warning' : 'success'">
+                    {{ selectedTaskRunDetail.status }}
+                  </el-tag>
+                  <el-tag size="small" effect="plain">risk={{ selectedTaskRunDetail.riskLevel }}</el-tag>
+                  <el-tag size="small" effect="plain">files={{ selectedTaskRunDetail.files?.length || 0 }}</el-tag>
+                </div>
+              </div>
+            </div>
+
+            <div class="run-detail-error" v-if="selectedTaskRunDetail.errorCode">
+              <el-alert :title="`${selectedTaskRunDetail.errorCode}: ${selectedTaskRunDetail.message || ''}`" type="warning" :closable="false" />
+            </div>
+
+            <div class="run-files" v-if="selectedTaskRunDetail.files?.length">
+              <div class="run-files-list">
                 <button
-                  @click="saveEditedOutput"
-                  class="px-3 py-1 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 rounded text-xs transition-colors"
+                  v-for="f in selectedTaskRunDetail.files"
+                  :key="f.relPath"
+                  class="run-file"
+                  :class="{ active: selectedTaskRunFilePath === f.relPath }"
+                  @click="selectedTaskRunFilePath = f.relPath"
                 >
-                  保存修改
+                  {{ f.relPath }}
                 </button>
               </div>
-              <textarea
-                v-model="editedOutput"
-                rows="8"
-                class="w-full bg-vue-darker border border-vue-border rounded-vue px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-vue-primary resize-y font-mono text-sm"
-                placeholder="Agent 输出内容，可在此修改..."
-              ></textarea>
-            </div>
-            
-            <!-- 执行中状态 -->
-            <div v-if="currentIteration?.status === 'running'" class="text-center py-4">
-              <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-3"></div>
-              <p class="text-gray-400">Agent 正在执行...</p>
-              <div v-if="progressLog" class="mt-3 text-vue-primary text-sm animate-pulse">
-                {{ progressLog }}
+              <div class="run-files-diff">
+                <pre class="diff-pre"><span v-for="(line, i) in selectedTaskRunDiffLines" :key="i" :class="`diff-${line.type}`">{{ line.text }}
+</span></pre>
               </div>
             </div>
-            
-            <!-- 确认/重新生成按钮 -->
-            <div v-if="canConfirm" class="flex justify-end space-x-3 pt-4 border-t border-vue-border">
-              <button
-                v-if="currentIteration?.status !== 'running'"
-                @click="rerunIteration"
-                class="px-4 py-2 bg-yellow-600/20 border border-yellow-600/50 text-yellow-400 hover:bg-yellow-600/30 rounded-vue text-sm transition-all"
-              >
-                重新生成 🔄
-              </button>
-              <button
-                @click="confirmOutput"
-                :disabled="currentIteration?.status === 'running'"
-                :class="currentIteration?.status === 'running' 
-                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
-                  : 'bg-gradient-to-r from-vue-primary to-vue-secondary text-white hover:shadow-vue-glow'"
-                class="px-4 py-2 rounded-vue text-sm font-medium transition-all"
-              >
-                {{ currentIteration?.status === 'running' ? '执行中...' : (isProductRole && currentIteration?.status === 'waiting_input' ? '开始执行 ✓' : '确认输出 ✓') }}
-              </button>
-            </div>
-          </div>
-          <div v-else-if="currentIteration?.status === 'running'" class="text-center py-4">
-            <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-3"></div>
-            <p class="text-gray-400">Agent 正在执行...</p>
-            <div v-if="progressLog" class="mt-3 text-vue-primary text-sm animate-pulse">
-              {{ progressLog }}
-            </div>
-          </div>
-          <div v-else class="text-gray-500 italic">
-            等待执行...
-          </div>
-        </div>
-
-        <!-- 历史记录 -->
-        <div v-if="currentIteration?.history?.length > 0" class="bg-vue-darker rounded-vue p-4">
-          <h3 class="text-gray-400 text-sm mb-2">执行历史</h3>
-          <div class="space-y-3">
-            <div 
-              v-for="(historyItem, idx) in currentIteration.history" 
-              :key="idx"
-              class="border-l-2 border-vue-border pl-3 py-2"
-            >
-              <div class="text-xs text-gray-500 mb-1">{{ formatDate(historyItem.timestamp) }}</div>
-              <div class="text-gray-400 text-sm">{{ historyItem.input?.slice(0, 100) }}...</div>
-            </div>
+            <div v-else class="run-no-files">该任务无文件写入（可能 NO_CHANGE）。</div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 本地项目参考 -->
-    <div v-if="sprint.localProjectPath" class="card-vue p-6">
-      <h2 class="text-lg font-medium text-white mb-4">📂 本地项目参考</h2>
-      <div class="text-gray-400 text-sm">
-        路径: <code class="text-vue-primary">{{ sprint.localProjectPath }}</code>
-      </div>
-    </div>
-
-    <!-- 取消确认弹窗 -->
-    <div v-if="showCancelConfirm" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showCancelConfirm = false"></div>
-      <div class="relative bg-gray-800 rounded-xl shadow-2xl w-full max-w-md mx-4 border border-red-500">
-        <div class="p-6 text-center">
-          <div class="text-4xl mb-4">⚠️</div>
-          <h3 class="text-xl font-semibold text-white mb-2">确认取消冲刺？</h3>
-          <p class="text-gray-400 mb-6">取消后无法恢复，请确认。</p>
-          <div class="flex justify-center space-x-4">
-            <button
-              @click="showCancelConfirm = false"
-              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-            >
-              取消
-            </button>
-            <button
-              @click="cancelSprint"
-              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg"
-            >
-              确认取消
-            </button>
+      <div v-if="selectedStageTaskMetrics.total > 0" class="detail-section">
+        <h4 class="detail-section-title">
+          <el-icon><CircleCheckFilled /></el-icon>
+          任务落盘指标
+        </h4>
+        <div class="task-metrics-cards">
+          <div class="task-metric-card">
+            <div class="task-metric-label">任务总数</div>
+            <div class="task-metric-value">{{ selectedStageTaskMetrics.total }}</div>
+          </div>
+          <div class="task-metric-card success">
+            <div class="task-metric-label">成功</div>
+            <div class="task-metric-value">{{ selectedStageTaskMetrics.success }}</div>
+          </div>
+          <div class="task-metric-card danger">
+            <div class="task-metric-label">失败</div>
+            <div class="task-metric-value">{{ selectedStageTaskMetrics.failed }}</div>
+          </div>
+          <div class="task-metric-card warning">
+            <div class="task-metric-label">高风险任务</div>
+            <div class="task-metric-value">{{ selectedStageTaskMetrics.highRisk }}</div>
           </div>
         </div>
+
+        <div class="task-metrics-warning" v-if="selectedStageTaskMetrics.failed > 0">
+          <el-tag v-if="selectedStageTaskMetrics.noFileBlocks > 0" type="danger" effect="plain">
+            NO_FILE_BLOCKS × {{ selectedStageTaskMetrics.noFileBlocks }}
+          </el-tag>
+          <el-tag v-if="selectedStageTaskMetrics.writeZero > 0" type="danger" effect="plain">
+            WRITE_ZERO × {{ selectedStageTaskMetrics.writeZero }}
+          </el-tag>
+          <el-tag v-if="selectedStageTaskMetrics.missingTests > 0" type="warning" effect="plain">
+            MISSING_TEST_FILE_BLOCKS × {{ selectedStageTaskMetrics.missingTests }}
+          </el-tag>
+        </div>
+
+        <div class="task-metrics-table-wrap" v-if="selectedStageTaskMetrics.items.length">
+          <div class="task-metrics-table-actions">
+            <el-switch
+              v-model="showOnlyFailedTaskMetrics"
+              size="small"
+              active-text="只看失败"
+              inactive-text="全部"
+            />
+          </div>
+          <table class="task-metrics-table">
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>风险</th>
+                <th>fileBlocks</th>
+                <th>written</th>
+                <th>错误码</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in filteredStageTaskMetricItems" :key="item.id">
+                <td>
+                  <el-tag :type="item.ok ? 'success' : 'danger'" size="small" effect="dark">
+                    {{ item.ok ? 'OK' : 'FAIL' }}
+                  </el-tag>
+                </td>
+                <td>{{ item.risk }}</td>
+                <td>{{ item.fileBlocks }}</td>
+                <td>{{ item.written }}</td>
+                <td>{{ item.errorCode || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 输出文件列表（预期路径 + 固定说明） -->
+      <div v-if="currentStage?.outputFiles?.length > 0" class="detail-section">
+        <h4 class="detail-section-title">
+          <el-icon><Folder /></el-icon>
+          输出文件（预期）
+        </h4>
+        <ul class="output-files-list">
+          <li
+            v-for="file in currentStage.outputFiles"
+            :key="file.path"
+            class="output-file-row"
+            :class="{ 'file-exists': file.exists }"
+          >
+            <div class="output-file-main">
+              <div class="output-file-title-row">
+                <el-icon v-if="file.isDir" class="output-file-icon"><Folder /></el-icon>
+                <el-icon v-else class="output-file-icon"><Document /></el-icon>
+                <span class="file-name">{{ file.name }}</span>
+                <code class="file-path">{{ file.path }}</code>
+              </div>
+              <p class="file-description">
+                {{ file.description || '该路径在冲刺 workspace 中的预期产出说明。' }}
+              </p>
+            </div>
+            <div class="file-actions">
+              <el-button
+                text
+                size="small"
+                @click.stop="openPreview({ ...file, path: file.path })"
+                title="预览"
+              >
+                <el-icon><View /></el-icon>
+              </el-button>
+              <el-button
+                text
+                size="small"
+                @click.stop="openFileInBrowser(file.path, 'sprint')"
+                title="打开"
+              >
+                <el-icon><TopRight /></el-icon>
+              </el-button>
+              <el-button
+                text
+                size="small"
+                @click.stop="downloadFile(file.path, 'sprint')"
+                title="下载"
+              >
+                <el-icon><Download /></el-icon>
+              </el-button>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- 历史记录 -->
+      <div v-if="selectedStageHistory.length > 0" class="detail-section">
+        <h4 class="detail-section-title">
+          <el-icon><Clock /></el-icon>
+          历史记录
+        </h4>
+        <el-timeline>
+          <el-timeline-item
+            v-for="(item, index) in selectedStageHistory"
+            :key="index"
+            :timestamp="formatTime(item.timestamp)"
+            placement="top"
+          >
+            <el-card size="small" class="history-card">
+              <p class="history-text">{{ item.output || '执行中...' }}</p>
+            </el-card>
+          </el-timeline-item>
+        </el-timeline>
       </div>
     </div>
 
     <!-- 预览弹窗 -->
-    <div v-if="showPreview" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closePreview"></div>
-      <div class="relative bg-gray-900 rounded-xl shadow-2xl w-full max-w-4xl mx-4 h-[80vh] flex flex-col border border-vue-border">
-        <!-- 头部 -->
-        <div class="flex items-center justify-between p-4 border-b border-vue-border">
-          <div class="flex items-center space-x-3">
-            <span class="text-2xl">{{ previewFile?.icon }}</span>
-            <div>
-              <h3 class="text-lg font-semibold text-white">{{ previewFile?.name }}</h3>
-              <p class="text-xs text-gray-500">{{ previewFile?.path }}</p>
-            </div>
-          </div>
-          <div class="flex space-x-2">
-            <button
-              @click="downloadFile(previewFile?.path)"
-              class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-            >
-              下载
-            </button>
-            <button
-              @click="closePreview"
-              class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm"
-            >
-              关闭
-            </button>
-          </div>
-        </div>
-        <!-- 内容 -->
-        <div class="flex-1 overflow-auto p-4">
-          <div v-if="previewLoading" class="flex items-center justify-center h-full">
-            <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full"></div>
-          </div>
-          <div v-else-if="previewError" class="flex items-center justify-center h-full">
-            <div class="text-center">
-              <div class="text-4xl mb-4">❌</div>
-              <p class="text-red-400">{{ previewError }}</p>
-            </div>
-          </div>
-          <pre v-else class="text-gray-300 text-sm whitespace-pre-wrap font-mono">{{ previewContent }}</pre>
-        </div>
+    <el-dialog
+      v-model="previewVisible"
+      :title="previewFile?.name || '文件预览'"
+      width="80%"
+      :before-close="closePreview"
+    >
+      <div v-if="previewLoading" class="preview-loading">
+        <el-icon class="is-loading" size="40"><Loading /></el-icon>
+        <p>加载中...</p>
       </div>
-    </div>
-  </div>
-
-  <div v-else class="text-center py-20">
-    <div class="animate-spin w-8 h-8 border-2 border-vue-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-    <p class="text-gray-400">加载中...</p>
+      <div v-else-if="previewError" class="preview-error">
+        <p style="color: #f56c6c;">{{ previewError }}</p>
+      </div>
+      <pre v-else class="preview-content">{{ previewContent }}</pre>
+      <template #footer>
+        <div class="preview-footer">
+          <el-button @click="closePreview">关闭</el-button>
+          <el-button v-if="previewFile" @click="downloadFile(previewFile.path, 'sprint')">
+            <el-icon><Download /></el-icon> 下载
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useProjectStore } from '../stores/project'
+import {
+  ROUTES,
+  SCENARIO_LABELS,
+  getStagesForScenario,
+  getRerunStepOptions
+} from '../config/sprintStageConfig.js'
+import { parseTaskExecutionMetrics } from '../utils/taskMetrics.js'
+import { ElMessage } from 'element-plus'
+import { 
+  VideoPlay, Document, Connection, CircleCheck, Loading, 
+  ArrowLeft, RefreshRight, CircleCheckFilled, CopyDocument,
+  Close, Edit, Folder, Clock, Minus, CircleClose,
+  View, TopRight, Download, Check
+} from '@element-plus/icons-vue'
 
 const props = defineProps({
-  sprintId: {
-    type: String,
-    required: true
-  }
+  sprintId: { type: String, required: true }
 })
 
 const emit = defineEmits(['back'])
 
 const store = useProjectStore()
-
-const sprint = computed(() => store.currentSprint)
-const selectedIterationIndex = ref(null)
+const sprint = ref(null)
+const activeStageIndex = ref(0)
+const selectedStage = ref(null)
 const userInput = ref('')
-const editedOutput = ref('')
-const showCancelConfirm = ref(false)
-const showCopySuccess = ref(false)
-const progressLog = ref('')
-const showOutputPreview = ref(false)
+const editableOutput = ref('')
+const isExecuting = ref(false)
+const showOnlyFailedTaskMetrics = ref(false)
+/** 分步重跑：各角色当前选中的 stepIndex（与后端一致，0 起） */
+const partialStepByRole = ref({})
+/** 正在执行的分步重跑 `role-stepIndex`，用于按钮 loading */
+const partialRerunLoading = ref('')
+const markStageRecoveryLoading = ref(false)
 
-// 预览弹窗状态
-const showPreview = ref(false)
+/** 代码开发：opencode | cursor_auto，与 sprint.developerBackend 同步 */
+const developerBackendChoice = ref('opencode')
+
+// 预览相关状态
 const previewFile = ref(null)
 const previewContent = ref('')
 const previewLoading = ref(false)
 const previewError = ref('')
+const previewVisible = ref(false)
+const developerTaskState = ref(null)
+const developerTaskRuns = ref([])
+const selectedTaskRunIndex = ref(null)
+const selectedTaskRunDetail = ref(null)
+const selectedTaskRunFilePath = ref('')
+const developerTaskLoading = ref(false)
+const developerTaskExecuting = ref(false)
+const showCancelConfirm = ref(false)
 
-// Tester 环境地址
-const testEnvironmentUrl = ref('')
-
-// 当前步骤索引（用于步骤执行）
-const currentStepIndex = ref(0)
-
-// 执行记录数据
-const executionLog = ref(null)
-
-// 上一角色的输出（作为当前角色的输入）
-const previousOutput = computed(() => {
-  if (selectedIterationIndex.value === null || selectedIterationIndex.value === 0) return null
-  const prevIteration = sprint.value?.iterations[selectedIterationIndex.value - 1]
-  return prevIteration?.output || null
+const currentIterationNeedsInput = computed(() => {
+  const stage = currentStage.value
+  if (!stage) return false
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  const nextToRun = sorted.find(i => ['waiting_input', 'ready'].includes(i.status))
+  return !!nextToRun
 })
 
-// 加载上一角色的执行记录
-async function loadExecutionLog() {
-  if (selectedIterationIndex.value === null || selectedIterationIndex.value === 0) {
-    executionLog.value = null
-    return
-  }
-  
-  const prevRoleIndex = selectedIterationIndex.value - 1
-  const prevIteration = sprint.value?.iterations[prevRoleIndex]
-  const role = prevIteration?.role
-  
-  if (!role) {
-    executionLog.value = null
-    return
-  }
-  
-  try {
-    const paddedIndex = String(prevRoleIndex + 1).padStart(2, '0')
-    const baseUrl = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:3000`
-    const response = await fetch(`${baseUrl}/api/sprints/${props.sprintId}/file?file=execution-log/${paddedIndex}-${role}.json`)
-    if (response.ok) {
-      const data = await response.json()
-      // API 返回格式: { type: 'file', content: '...' }
-      if (data.type === 'file' && data.content) {
-        executionLog.value = JSON.parse(data.content)
-      } else {
-        executionLog.value = data
-      }
-    } else {
-      executionLog.value = null
+const scenarioLabel = computed(() => {
+  const sc = sprint.value?.scenario || 'BUILD'
+  return SCENARIO_LABELS[sc] || SCENARIO_LABELS.BUILD
+})
+
+const showDeveloperBackendPicker = computed(() => {
+  const roles = sprint.value?.roles
+  return Array.isArray(roles) && roles.includes('developer')
+})
+
+const isDeveloperStageSelected = computed(() => {
+  const stage = currentStage.value
+  return !!stage?.agents?.some(a => a.role === 'developer')
+})
+
+const developerRoleIndex = computed(() => {
+  const idx = sprint.value?.iterations?.findIndex(i => i.role === 'developer')
+  return idx >= 0 ? idx : null
+})
+
+const selectedTaskRunFile = computed(() => {
+  if (!selectedTaskRunDetail.value?.files?.length) return null
+  const chosen = selectedTaskRunFilePath.value
+  return selectedTaskRunDetail.value.files.find(f => f.relPath === chosen) || selectedTaskRunDetail.value.files[0]
+})
+
+function buildDiffLines(beforeText, afterText) {
+  const a = String(beforeText || '').split('\n')
+  const b = String(afterText || '').split('\n')
+  const out = []
+  let i = 0
+  let j = 0
+  while (i < a.length || j < b.length) {
+    const left = i < a.length ? a[i] : null
+    const right = j < b.length ? b[j] : null
+    if (left !== null && right !== null && left === right) {
+      out.push({ type: 'context', text: `  ${left}` })
+      i++
+      j++
+      continue
     }
-  } catch (e) {
-    console.log('加载执行记录失败:', e)
-    executionLog.value = null
+    if (left !== null && (j + 1 < b.length) && left === b[j + 1]) {
+      out.push({ type: 'add', text: `+ ${b[j]}` })
+      j++
+      continue
+    }
+    if (right !== null && (i + 1 < a.length) && a[i + 1] === right) {
+      out.push({ type: 'remove', text: `- ${a[i]}` })
+      i++
+      continue
+    }
+    if (left !== null) {
+      out.push({ type: 'remove', text: `- ${left}` })
+      i++
+    }
+    if (right !== null) {
+      out.push({ type: 'add', text: `+ ${right}` })
+      j++
+    }
+  }
+  return out
+}
+
+const selectedTaskRunDiffLines = computed(() => {
+  const file = selectedTaskRunFile.value
+  if (!file) return []
+  return buildDiffLines(file.beforeContent, file.afterContent)
+})
+
+function formatStageSkills(skills) {
+  const list = Array.isArray(skills) ? skills : []
+  if (list.length <= 2) return list.join(', ')
+  return `${list.slice(0, 2).join(', ')} +${list.length - 2}`
+}
+
+watch(
+  () => sprint.value?.developerBackend,
+  (v) => {
+    if (v === 'cursor_auto' || v === 'opencode') {
+      developerBackendChoice.value = v
+    }
+  },
+  { immediate: true }
+)
+
+function getPipelineRoleOrder() {
+  const r = sprint.value?.roles
+  if (r && r.length) return r
+  const sc = sprint.value?.scenario || 'BUILD'
+  return ROUTES[sc] || ROUTES.BUILD
+}
+
+function roleOrderIndex(role) {
+  const order = getPipelineRoleOrder()
+  const i = order.indexOf(role)
+  return i === -1 ? 999 : i
+}
+
+function resolveRoleIndex(iteration) {
+  if (!iteration || !sprint.value?.iterations?.length) return 0
+  if (typeof iteration.roleIndex === 'number') return iteration.roleIndex
+  const idx = sprint.value.iterations.findIndex(
+    i => i.role?.toLowerCase() === iteration.role?.toLowerCase()
+  )
+  return idx >= 0 ? idx : 0
+}
+
+function sortStageIterationsByPipeline(stageIterations) {
+  if (!stageIterations?.length) return []
+  return [...stageIterations].sort(
+    (a, b) => roleOrderIndex(a.role) - roleOrderIndex(b.role)
+  )
+}
+
+/** 本阶段内下一个应执行的角色（流水线顺序，且 tech_coach 先于 architect） */
+function getExecutableIterationForStage(stage) {
+  if (!sprint.value?.iterations?.length || !stage?.agents?.length) return null
+
+  // 不依赖 stage.iterations（它可能因为映射/状态同步问题为空），直接用 stage.agents 去 sprint.iterations 里定位
+  const agents = stageAgentsSorted(stage)
+  const stageRoles = new Set(agents.map(a => String(a.role || '').toLowerCase()).filter(Boolean))
+  for (const a of agents) {
+    const it = sprint.value.iterations.find(
+      i => (i.role || '').toLowerCase() === (a.role || '').toLowerCase()
+    )
+    if (!it) continue
+    if (it.status === 'completed' || it.status === 'confirmed') continue
+    // 含 running：交给 POST /execute，由后端区分僵死状态自愈与真实执行中(409)
+    return it
+  }
+
+  // 兜底 1：如果 stage.iterations 映射到了内容（但上面的按 role 没对上），则从这里找
+  const mapped = sortStageIterationsByPipeline(stage.iterations || [])
+  for (const it of mapped) {
+    if (!it) continue
+    if (it.status === 'completed' || it.status === 'confirmed') continue
+    return it
+  }
+
+  // 兜底 2：使用 sprint.currentRoleIndex（若该角色属于本 stage）
+  const idx = sprint.value?.currentRoleIndex
+  if (Number.isFinite(Number(idx)) && sprint.value.iterations[idx]) {
+    const it = sprint.value.iterations[idx]
+    const r = String(it.role || '').toLowerCase()
+    if (stageRoles.has(r)) {
+      if (it.status !== 'completed' && it.status !== 'confirmed') {
+        return it
+      }
+    }
+  }
+
+  return null
+}
+
+function getRerunIterationForStage(stage) {
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const it = sorted[i]
+    if (it?.status === 'failed') return it
+  }
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const it = sorted[i]
+    if (['completed', 'confirmed'].includes(it.status) || (it.output && it.output.trim())) {
+      return it
+    }
+  }
+  return sorted[sorted.length - 1] || null
+}
+
+function stageAgentsSorted(stage) {
+  if (!stage?.agents) return []
+  return [...stage.agents].sort(
+    (a, b) => roleOrderIndex(a.role) - roleOrderIndex(b.role)
+  )
+}
+
+/** 本阶段内每个角色都已「确认输出」（confirmed），才允许切到流程的下一阶段 */
+function isStageFullyDone(stage) {
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  if (!sorted.length) return false
+  return sorted.every(i => i.status === 'confirmed')
+}
+
+/** 展示「整段标为已确认」恢复（本阶段尚未全部 confirmed 时） */
+const showMarkStageRecovery = computed(() => {
+  if (!sprint.value || sprint.value.status === 'pending') return false
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage?.id || !stage.iterations?.length) return false
+  return !isStageFullyDone(stage)
+})
+
+// ========== 阶段状态聚合 ==========
+const pipelineStages = computed(() => {
+  const cfg = getStagesForScenario(sprint.value?.scenario)
+  if (!sprint.value) return cfg.map(s => ({ ...s, status: 'pending' }))
+
+  const iterations = sprint.value.iterations || []
+
+  return cfg.map(stage => {
+    const stageIterations = sortStageIterationsByPipeline(
+      stage.agents
+        .map(agent => iterations.find(i => i.role?.toLowerCase() === agent.role?.toLowerCase()))
+        .filter(Boolean)
+    )
+
+    let status = 'pending'
+    if (stageIterations.length === 0) {
+      status = 'pending'
+    } else if (stageIterations.some(i => i.status === 'running')) {
+      status = 'running'
+    } else if (stageIterations.some(i => i.status === 'waiting_input')) {
+      status = 'waiting_input'
+    } else if (stageIterations.every(i => i.status === 'completed' || i.status === 'confirmed')) {
+      status = 'completed'
+    } else if (stageIterations.some(i => i.status === 'failed')) {
+      status = 'failed'
+    } else if (stageIterations.some(i => i.status === 'ready')) {
+      status = 'waiting_input'
+    }
+
+    return {
+      ...stage,
+      status,
+      iterations: stageIterations
+    }
+  })
+})
+
+// 当前阶段
+const currentStage = computed(() => {
+  return pipelineStages.value[activeStageIndex.value] || null
+})
+
+// 当前阶段索引
+const currentStageIndex = computed(() => {
+  for (let i = pipelineStages.value.length - 1; i >= 0; i--) {
+    const stage = pipelineStages.value[i]
+    if (stage.status === 'completed' || stage.status === 'running' || stage.status === 'waiting_input') {
+      return i
+    }
+  }
+  return 0
+})
+
+// 获取 Agent 状态
+function getAgentStatus(agent) {
+  if (!sprint.value) return { status: 'pending' }
+  const iteration = sprint.value.iterations?.find(
+    i => i.role?.toLowerCase() === agent.role?.toLowerCase()
+  )
+  return {
+    status: iteration?.status || 'pending',
+    iteration
   }
 }
 
-// 是否是 Tester 角色
-const isTesterRole = computed(() => currentIteration.value?.role === 'tester')
+// 获取当前工作中的 Agent
+function getWorkingAgent(stage) {
+  if (!sprint.value || !stage.agents) return null
+  const runningAgent = stage.agents.find(agent => {
+    const iteration = sprint.value.iterations?.find(
+      i => i.role?.toLowerCase() === agent.role?.toLowerCase()
+    )
+    return iteration?.status === 'running'
+  })
+  return runningAgent || null
+}
 
-const currentIteration = computed(() => {
-  if (selectedIterationIndex.value === null) return null
-  return sprint.value?.iterations[selectedIterationIndex.value]
-})
+// 检查阶段是否可访问
+function isStageAccessible(index) {
+  if (index === 0) return true
+  const prevStage = pipelineStages.value[index - 1]
+  return prevStage.status === 'completed'
+}
 
-// 当前 iteration 是否可以确认（必须在完成状态且有输出）
-const canConfirm = computed(() => {
-  const iter = currentIteration.value
-  if (!iter) return false
-  // Product 角色在 waiting_input 状态时也可以确认执行
-  if (iter.role === 'product' && iter.status === 'waiting_input') {
-    return true
+function selectStage(index) {
+  if (isStageAccessible(index)) {
+    activeStageIndex.value = index
+    selectedStage.value = index
   }
-  return iter.status === 'completed' && iter.output && iter.output.trim().length > 0
-})
+}
 
-// Product 角色特殊处理：不需要额外输入，直接使用冲刺需求
-const isProductRole = computed(() => currentIteration.value?.role === 'product')
-
-// 是否可以输入（角色处于可执行状态）
-const canInput = computed(() => {
-  const iter = currentIteration.value
-  if (!iter) return false
-  // 状态为 waiting_input/ready/pending 且有用户输入时可以执行
-  return ['waiting_input', 'ready', 'pending'].includes(iter.status) && 
-         iter.userInput && iter.userInput.trim().length > 0
-})
-
-// Tester 输出摘要（解析 bug 数量或环境问题）
-const testerSummary = computed(() => {
-  if (currentIteration.value?.role !== 'tester') return null
-  const output = currentIteration.value?.output || ''
+// 选中的阶段输出
+const selectedStageOutput = computed(() => {
+  if (!sprint.value?.iterations?.length) return null
   
-  // 检查是否有环境问题
-  if (output.includes('环境') || output.includes('缺少环境') || output.includes('无法启动')) {
-    return { type: 'environment', message: '环境问题无法进行代码审查' }
-  }
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return null
   
-  // 尝试提取 bug 数量
-  const bugMatch = output.match(/(\d+)\s*个\s*(bug|问题|缺陷)/i)
-  if (bugMatch) {
-    return { type: 'bugs', count: parseInt(bugMatch[1]) }
+  // 按流水线顺序展示第一个有内容的输出（技术设计阶段先技术教练、后架构师）
+  for (const agent of stageAgentsSorted(stage)) {
+    const iteration = sprint.value.iterations.find(
+      i => i.role?.toLowerCase() === agent.role?.toLowerCase()
+    )
+    if (iteration?.output) {
+      editableOutput.value = iteration.output
+      return iteration.output
+    }
   }
   
-  // 检查是否有失败/错误
-  if (output.includes('失败') || output.includes('error') || output.includes('Error')) {
-    return { type: 'issues', message: '存在测试问题，请查看完整报告' }
-  }
-  
-  return { type: 'success', message: '测试通过或无明显问题' }
+  return null
 })
 
-// 第一个角色可以自动执行（不需要用户输入）
-const canAutoExecute = computed(() => {
-  const iter = currentIteration.value
-  if (!iter) return false
-  // Product 角色：状态为 waiting_input 或 ready 时可以直接确认输入
-  if (iter.role === 'product' && ['waiting_input', 'ready', 'pending'].includes(iter.status)) {
-    return true
+const selectedStageHistory = computed(() => {
+  if (!sprint.value) return null
+  const stageIndex = selectedStage.value !== null ? selectedStage.value : activeStageIndex.value
+  const stage = pipelineStages.value[stageIndex]
+  if (!stage) return []
+  
+  // 如果没有匹配到 iteration，直接从 sprint.iterations 查找
+  if (stage.iterations.length === 0) {
+    for (const agent of stage.agents) {
+      const iteration = sprint.value.iterations?.find(i => i.role === agent.role)
+      if (iteration?.history) return iteration.history
+    }
+    return []
   }
-  // 其他角色：状态为 waiting_input/ready/pending 且有用户输入时可以执行
-  return ['waiting_input', 'ready', 'pending'].includes(iter.status) && 
-         iter.userInput && iter.userInput.trim().length > 0
+  
+  return stage.iterations[0].history || []
 })
 
-onMounted(() => {
-  store.fetchSprint(props.sprintId)
-  
-  // 确保 socket 连接
-  store.connect()
-  
-  // 设置 WebSocket 监听
-  if (store.socket) {
-    setupSocketListeners()
-  } else {
-    // socket 未就绪，等待连接后设置
-    store.socket?.on('connect', () => {
-      setupSocketListeners()
+const hasWaitingInput = computed(() => {
+  if (!sprint.value) return false
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return false
+  return stage.status === 'waiting_input' || stage.status === 'pending'
+})
+
+const isStageRunning = computed(() => {
+  if (!sprint.value) return false
+  const stage = pipelineStages.value[activeStageIndex.value]
+  return stage?.status === 'running'
+})
+
+const selectedStageTaskMetrics = computed(() => {
+  const output = selectedStageOutput.value || editableOutput.value || ''
+  return parseTaskExecutionMetrics(output)
+})
+
+const filteredStageTaskMetricItems = computed(() => {
+  if (!showOnlyFailedTaskMetrics.value) return selectedStageTaskMetrics.value.items
+  return selectedStageTaskMetrics.value.items.filter(item => !item.ok && !item.warn)
+})
+
+async function loadDeveloperTaskConsole() {
+  if (!props.sprintId || !isDeveloperStageSelected.value) return
+  developerTaskLoading.value = true
+  try {
+    const [state, runs] = await Promise.all([
+      store.fetchDeveloperState(props.sprintId),
+      store.fetchDeveloperTaskRuns(props.sprintId)
+    ])
+    developerTaskState.value = state
+    developerTaskRuns.value = runs.slice().sort((a, b) => (b.taskIndex || 0) - (a.taskIndex || 0))
+    if (!selectedTaskRunIndex.value && developerTaskRuns.value.length > 0) {
+      await selectDeveloperTaskRun(developerTaskRuns.value[0].taskIndex)
+    }
+  } finally {
+    developerTaskLoading.value = false
+  }
+}
+
+async function selectDeveloperTaskRun(taskIndex) {
+  selectedTaskRunIndex.value = taskIndex
+  const detail = await store.fetchDeveloperTaskRunDetail(props.sprintId, taskIndex)
+  selectedTaskRunDetail.value = detail
+  selectedTaskRunFilePath.value = detail?.files?.[0]?.relPath || ''
+}
+
+async function executeNextDeveloperTask() {
+  if (!props.sprintId || developerRoleIndex.value === null) return
+  developerTaskExecuting.value = true
+  isExecuting.value = true
+  try {
+    await store.executeIteration(props.sprintId, developerRoleIndex.value, null, {
+      developerBackend: developerBackendChoice.value
     })
+    ElMessage.success('已启动下一条任务执行')
+    await loadSprint()
+    await loadDeveloperTaskConsole()
+  } catch (e) {
+    ElMessage.error(e.message || '执行失败')
+  } finally {
+    developerTaskExecuting.value = false
+    isExecuting.value = false
   }
-})
-
-function setupSocketListeners() {
-  if (!store.socket) return
-  
-  store.socket.on('iteration:output:updated', ({ sprintId }) => {
-    if (sprintId === props.sprintId) {
-      store.fetchSprint(props.sprintId)
-    }
-  })
-  store.socket.on('iteration:confirmed', ({ sprintId }) => {
-    if (sprintId === props.sprintId) store.fetchSprint(props.sprintId)
-  })
-  store.socket.on('iteration:completed', ({ sprintId }) => {
-    if (sprintId === props.sprintId) store.fetchSprint(props.sprintId)
-  })
-  store.socket.on('iteration:execution:started', ({ sprintId }) => {
-    if (sprintId === props.sprintId) store.fetchSprint(props.sprintId)
-  })
-  store.socket.on('sprint:updated', (data) => {
-    if (data.id === props.sprintId) store.fetchSprint(props.sprintId)
-  })
-  store.socket.on('agent:output', ({ sprintId }) => {
-    if (sprintId === props.sprintId) store.fetchSprint(props.sprintId)
-  })
-  
-  // 监听实时进度
-  store.socket.on('agent:progress', ({ message }) => {
-    progressLog.value = message
-  })
-  
-  // 监听文件创建事件，逐个消除 loading
-  store.socket.on('file:created', ({ filePath, fileName, sprintId }) => {
-    if (sprintId === props.sprintId) {
-      loadExistingFiles()  // 重新加载文件列表，更新 loading 状态
-    }
-  })
 }
 
-watch(() => props.sprintId, (newId) => {
-  store.fetchSprint(newId)
+/** 当前阶段内支持「分步重跑」的角色（多步骤角色） */
+const partialRerunAgents = computed(() => {
+  const sc = sprint.value?.scenario || 'BUILD'
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage?.agents) return []
+  return stage.agents.filter(a => getRerunStepOptions(a.role, sc).length > 0)
 })
 
-// 监听当前 iteration 状态变化，自动刷新
-let pollTimer = null
-let filePollTimer = null
-watch(() => currentIteration.value?.status, (newStatus, oldStatus) => {
-  if (newStatus === 'running' && oldStatus !== 'running') {
-    // 定期刷新 sprint 状态
-    pollTimer = setInterval(async () => {
-      await store.fetchSprint(props.sprintId)
-      const iter = currentIteration.value
-      if (iter?.output || iter?.status === 'completed' || iter?.status === 'confirmed' || iter?.status === 'failed') {
-        clearInterval(pollTimer)
-        pollTimer = null
+watch(
+  partialRerunAgents,
+  agents => {
+    const next = { ...partialStepByRole.value }
+    for (const a of agents) {
+      if (next[a.role] === undefined) {
+        next[a.role] = a.role === 'architect' ? 4 : 0
       }
-    }, 1500)
-    
-    // 定期刷新文件列表（更快更新 loading 状态）
-    filePollTimer = setInterval(async () => {
-      await loadExistingFiles()
-    }, 1000)
-  }
-  if (newStatus !== 'running' && pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-  if (newStatus !== 'running' && filePollTimer) {
-    clearInterval(filePollTimer)
-    filePollTimer = null
-  }
-})
-
-// 组件卸载时清理
-onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
-  if (filePollTimer) clearInterval(filePollTimer)
-})
-
-function selectIteration(index) {
-  selectedIterationIndex.value = index
-  const iter = sprint.value?.iterations[index]
-  userInput.value = iter?.userInput || ''
-  confirmModify.value = false
-}
-
-function getInputPlaceholder() {
-  const role = currentIteration.value?.role
-  const placeholders = {
-    product: '这是冲刺的原始需求，确认后 Agent 将生成 PRD',
-    architect: '输入对架构的特殊要求，例如：需要支持高并发...',
-    tech_coach: '输入需要特别关注的可行性点...',
-    developer: '输入对开发的特殊要求...',
-    tester: '输入对测试的特殊要求...',
-    ops: '输入对部署的特殊要求...',
-    evolver: '输入优化建议...'
-  }
-  return placeholders[role] || '输入你的需求或反馈...'
-}
-
-async function submitUserInput() {
-  // Product 角色：使用冲刺需求作为输入
-  // 其他角色：使用上一角色的输出作为输入
-  const input = isProductRole.value 
-    ? (sprint.value?.rawInput || '') 
-    : (previousOutput.value || '')
-  
-  if (!input.trim()) return
-  
-  await store.inputIteration(props.sprintId, selectedIterationIndex.value, input)
-  await store.fetchSprint(props.sprintId)
-  
-  // 重置步骤索引，从第 0 步开始执行
-  currentStepIndex.value = 0
-  await store.executeIteration(props.sprintId, selectedIterationIndex.value, currentStepIndex.value)
-}
-
-async function saveEditedOutput() {
-  try {
-    await store.updateIterationOutput(props.sprintId, selectedIterationIndex.value, editedOutput.value)
-    alert('保存成功！')
-  } catch (e) {
-    console.error('保存失败:', e)
-    alert('保存失败: ' + e.message)
-  }
-}
-
-async function confirmOutput() {
-  const currentIndex = selectedIterationIndex.value
-  const currentOutput = editedOutput.value || sprint.value?.iterations[currentIndex]?.output || ''
-  
-  try {
-    // 传递当前输出以实现双向同步
-    const result = await store.confirmIteration(props.sprintId, currentIndex, currentOutput)
-    if (!result) {
-      alert('确认失败，请重试')
-      return
     }
-    await store.fetchSprint(props.sprintId)
-    
-    // 自动选择下一个角色并执行
-    const nextIndex = currentIndex + 1
-    if (nextIndex < sprint.value?.iterations.length) {
-      selectedIterationIndex.value = nextIndex
-      
-      const prevOutput = sprint.value?.iterations[currentIndex]?.output || ''
-      userInput.value = prevOutput
-      
-      // 重置步骤索引，从第 0 步开始
-      currentStepIndex.value = 0
-      
-      // 自动执行下一角色
-      await store.executeIteration(props.sprintId, nextIndex, 0)
-    }
-  } catch (e) {
-    console.error('确认输出失败:', e)
-    alert('确认失败: ' + e.message)
+    partialStepByRole.value = next
+  },
+  { immediate: true, deep: true }
+)
+
+function getIterationRoleIndex(role) {
+  const r = (role || '').toLowerCase()
+  const idx = sprint.value?.iterations?.findIndex(i => (i.role || '').toLowerCase() === r)
+  return idx >= 0 ? idx : null
+}
+
+async function persistDeveloperBackend() {
+  if (!sprint.value?.id) return
+  const updated = await store.updateSprint(sprint.value.id, {
+    developerBackend: developerBackendChoice.value
+  })
+  if (updated) {
+    sprint.value = updated
+    ElMessage.success('已保存代码开发引擎选项')
   }
 }
 
-async function rerunIteration() {
-  await store.rerunIteration(props.sprintId, selectedIterationIndex.value)
-  // 触发 Agent 重新执行，使用当前步骤索引
-  await store.executeIteration(props.sprintId, selectedIterationIndex.value, currentStepIndex.value)
-  // 刷新数据
-  await store.fetchSprint(props.sprintId)
-}
-
-async function startSprint() {
-  await store.startSprint(props.sprintId)
-  // 刷新数据
-  await store.fetchSprint(props.sprintId)
-  // 第一个角色设置为等待输入
-  selectedIterationIndex.value = 0
-}
-
-async function cancelSprint() {
-  await store.updateSprint(props.sprintId, { status: 'cancelled' })
-  showCancelConfirm.value = false
-  emit('back')
-}
-
-async function copySprintId() {
-  const text = sprint.value?.id || ''
+async function markCurrentStageConfirmed() {
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage?.id) return
+  markStageRecoveryLoading.value = true
   try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const textarea = document.createElement('textarea')
-      textarea.value = text
-      textarea.style.position = 'fixed'
-      textarea.style.opacity = '0'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
-    showCopySuccess.value = true
-    setTimeout(() => { showCopySuccess.value = false }, 2000)
+    await store.markStageConfirmed(props.sprintId, stage.id)
+    ElMessage.success(`已标记「${stage.name}」为已确认，可继续下一阶段`)
+    await loadSprint()
   } catch (e) {
-    console.error('复制失败:', e)
+    ElMessage.error(e.message || '操作失败')
+  } finally {
+    markStageRecoveryLoading.value = false
   }
 }
 
-async function saveEnvironmentUrl() {
-  if (!testEnvironmentUrl.value.trim()) {
-    alert('请输入环境地址')
+async function executePartialRerun(role) {
+  const ri = getIterationRoleIndex(role)
+  if (ri === null) {
+    ElMessage.error('未找到该角色的迭代')
     return
   }
+  const stepIndex = partialStepByRole.value[role]
+  if (stepIndex === undefined) {
+    ElMessage.error('请选择步骤')
+    return
+  }
+  const scenario = sprint.value?.scenario || 'BUILD'
+  const opts = getRerunStepOptions(role, scenario)
+  if (!opts.some(o => o.stepIndex === stepIndex)) {
+    ElMessage.error('步骤无效')
+    return
+  }
+
+  isExecuting.value = true
+  partialRerunLoading.value = `${role}-${stepIndex}`
   try {
-    await store.updateEnvironment(props.sprintId, selectedIterationIndex.value, testEnvironmentUrl.value.trim())
-    alert('环境地址已保存')
+    await store.executeIteration(
+      props.sprintId,
+      ri,
+      stepIndex,
+      role === 'developer' ? { developerBackend: developerBackendChoice.value } : {}
+    )
+    ElMessage.success('已启动执行，请等待 Agent 完成')
+    await loadSprint()
   } catch (e) {
-    console.error('保存环境地址失败:', e)
-    alert('保存失败: ' + e.message)
+    console.error('分步重跑失败:', e)
+    ElMessage.error(e.message || '执行失败')
+  } finally {
+    isExecuting.value = false
+    partialRerunLoading.value = ''
   }
 }
 
-async function skipAndContinue() {
-  await confirmOutput()
+function getStageStatusType(status) {
+  const types = {
+    pending: 'info',
+    waiting_input: 'warning',
+    running: '',
+    completed: 'success',
+    failed: 'danger'
+  }
+  return types[status] || 'info'
 }
 
-function getIterationClass(index, iteration) {
-  if (index === sprint.value?.currentRoleIndex && sprint.value?.status === 'running') {
-    return 'bg-vue-primary/20 border-2 border-vue-primary'
-  }
-  if (iteration.status === 'confirmed' || iteration.status === 'completed') {
-    return 'bg-vue-primary/10 border border-vue-primary/50'
-  }
-  if (iteration.status === 'failed') {
-    return 'bg-red-500/10 border border-red-500/50'
-  }
-  return 'bg-vue-card border border-vue-border hover:border-vue-primary/50'
-}
-
-function getIterationIconBg(index, iteration) {
-  if (iteration.status === 'confirmed' || iteration.status === 'completed') {
-    return 'bg-vue-primary'
-  }
-  if (iteration.status === 'running' || iteration.status === 'waiting_input') {
-    return 'bg-blue-500'
-  }
-  if (iteration.status === 'failed') {
-    return 'bg-red-500'
-  }
-  return 'bg-gray-600'
-}
-
-function getIterationStatusTextClass(status) {
-  const classes = {
-    pending: 'text-gray-500',
-    waiting_input: 'text-yellow-400',
-    ready: 'text-yellow-400',
-    running: 'text-blue-400',
-    completed: 'text-green-400',
-    confirmed: 'text-green-400',
-    failed: 'text-red-400'
-  }
-  return classes[status] || 'text-gray-500'
-}
-
-function getIterationStatusText(status, isFullyComplete = true) {
+function getStageStatusText(status) {
   const texts = {
-    pending: '待开始',
+    pending: '待执行',
     waiting_input: '等待输入',
-    ready: '准备执行',
     running: '执行中',
-    completed: isFullyComplete ? '已完成' : '生成中',
-    confirmed: '已确认',
+    completed: '已完成',
     failed: '失败'
   }
   return texts[status] || status
 }
 
-function formatOutput(output) {
-  if (!output) return ''
-  // 直接返回，不做过滤，让后端处理
-  return output
-}
-
-function formatAsJson(input) {
-  if (!input) return ''
+function getInputPlaceholder() {
+  const stage = currentStage.value
+  if (!stage?.agents?.length) return '请输入...'
   
-  // 尝试直接解析整个输入
-  try {
-    const parsed = JSON.parse(input)
-    return JSON.stringify(parsed, null, 2)
-  } catch {}
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  const nextRole = sorted.find(i => ['pending', 'ready'].includes(i.status))
   
-  // 尝试提取 JSON 代码块
-  const jsonBlockMatch = input.match(/```json\n?([\s\S]*?)```/i)
-  if (jsonBlockMatch) {
-    try {
-      const parsed = JSON.parse(jsonBlockMatch[1])
-      return JSON.stringify(parsed, null, 2)
-    } catch {}
+  const placeholders = {
+    product: '请输入产品需求描述...',
+    tech_coach: '请输入对技术方案的修改意见（可选）...',
+    architect: '请输入对架构设计的修改意见（可选）...',
+    developer: '请输入对代码开发的修改意见（可选）...',
+    tester: '请输入对测试报告的修改意见（可选）...',
+    ops: '请输入对部署配置的修改意见（可选）...'
   }
   
-  // 如果都不是，返回原始文本
-  return input
+  return placeholders[nextRole?.role] || '请输入...'
 }
 
-function sprintStatusClass(status) {
-  const classes = {
-    pending: 'bg-gray-500/20 text-gray-400',
-    running: 'bg-yellow-500/20 text-yellow-400',
-    completed: 'bg-green-500/20 text-green-400',
-    cancelled: 'bg-red-500/20 text-red-400'
-  }
-  return classes[status] || classes.pending
+function getStatusType(status) {
+  const types = { pending: 'info', running: 'warning', completed: 'success', failed: 'danger' }
+  return types[status] || 'info'
 }
 
-function sprintStatusText(status) {
-  const texts = {
-    pending: '待开始',
-    running: '进行中',
-    completed: '已完成',
-    cancelled: '已取消'
-  }
+function getStatusText(status) {
+  const texts = { pending: '待开始', running: '进行中', completed: '已完成', failed: '失败' }
   return texts[status] || status
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '-'
-  return new Date(dateStr).toLocaleString('zh-CN')
+function formatTime(timestamp) {
+  if (!timestamp) return ''
+  return new Date(timestamp).toLocaleString('zh-CN')
 }
 
-// 输出文件列表配置
-const outputFilesConfig = {
-  gatekeeper: [
-    { name: '路由决策', icon: '🚪', path: 'output/route-decision.md', source: 'sprint' }
-  ],
-  product: [
-    { name: '用户画像', icon: '👤', path: 'product/user-personas.md', source: 'sprint' },
-    { name: '用户故事', icon: '📝', path: 'product/user-stories.md', source: 'sprint' },
-    { name: '功能清单', icon: '✅', path: 'product/functional-requirements.md', source: 'sprint' },
-    { name: '界面布局', icon: '🎨', path: 'product/ui-layout.md', source: 'sprint' },
-    { name: '交互流程', icon: '🔀', path: 'product/user-journey.md', source: 'sprint' },
-    { name: 'PRD 文档', icon: '📋', path: 'product/prd.md', source: 'sprint' }
-  ],
-  architect: [
-    { name: '系统架构', icon: '🏗️', path: 'architect/architecture.md', source: 'sprint' },
-    { name: 'API 设计', icon: '📡', path: 'architect/api-design.md', source: 'sprint' },
-    { name: '数据库设计', icon: '🗄️', path: 'architect/database.md', source: 'sprint' },
-    { name: '业务流转图', icon: '🔀', path: 'architect/data-flow.md', source: 'sprint' },
-    { name: 'OpenSpec Changes', icon: '📋', path: 'openspec/changes/', source: 'project', category: 'dir' }
-  ],
-  tech_coach: [
-    { name: '技术实现文档', icon: '📝', path: 'tech-coach/tech-implementation.md', source: 'sprint' },
-    { name: '用户故事', icon: '📖', path: 'output/user-stories.md', source: 'sprint' },
-    { name: '技术可行性', icon: '🔍', path: 'output/tech-feasibility.md', source: 'sprint' }
-  ],
-  developer: [
-    { name: 'README', icon: '📖', path: 'developer/README.md', source: 'sprint' },
-    { name: 'API 文档', icon: '📚', path: 'developer/API.md', source: 'sprint' },
-    { name: '开发摘要', icon: '📋', path: 'developer/dev-summary.md', source: 'sprint' },
-    { name: '前端代码', icon: '💻', path: 'developer/frontend/', source: 'sprint', category: 'dir' },
-    { name: '后端代码', icon: '⚙️', path: 'developer/backend/', source: 'sprint', category: 'dir' }
-  ],
-  tester: [
-    { name: '测试用例', icon: '📝', path: 'tester/test-cases.md', source: 'sprint' },
-    { name: '测试结果', icon: '📊', path: 'tester/test-results.md', source: 'sprint' },
-    { name: '安全扫描', icon: '🔒', path: 'tester/security-scan.md', source: 'sprint' },
-    { name: '测试报告', icon: '🧪', path: 'tester/test-report.md', source: 'sprint' },
-    { name: '安全报告', icon: '🛡️', path: 'tester/security-report.md', source: 'sprint' }
-  ],
-  ops: [
-    { name: '部署配置', icon: '⚙️', path: 'ops/ops-config.md', source: 'sprint' },
-    { name: 'Dockerfile', icon: '🐳', path: 'ops/Dockerfile', source: 'sprint' },
-    { name: 'Docker Compose', icon: '📦', path: 'ops/docker-compose.yml', source: 'sprint' }
-  ],
-  ghost: [
-    { name: '安全审计', icon: '👻', path: 'ghost/security-report.md', source: 'sprint' }
-  ],
-  evolver: [
-    { name: '重构建议', icon: '🔄', path: 'evolver/evolver-report.md', source: 'sprint' }
-  ],
-  creative: [
-    { name: '设计评审', icon: '🎨', path: 'output/design-review.md', source: 'sprint' }
-  ]
-}
-
-// 实际存在的文件列表
-const existingFiles = ref([])
-
-// 加载实际文件列表
-async function loadExistingFiles() {
-  if (!props.sprintId) return
-  const files = await store.fetchSprintFiles(props.sprintId)
-  existingFiles.value = files
-}
-
-const currentOutputFiles = computed(() => {
-  const role = currentIteration.value?.role
-  const iterationStatus = currentIteration.value?.status
-  if (!role || !outputFilesConfig[role]) return []
-  
-  const files = outputFilesConfig[role]
-  
-  // 如果正在执行，根据实际文件存在状态显示 loading
-  if (iterationStatus === 'running') {
-    return files.map(f => {
-      const exists = f.category === 'dir'
-        ? existingFiles.value.some(ef => ef.path.startsWith(f.path))
-        : existingFiles.value.some(ef => ef.path === f.path)
-      return {
-        ...f,
-        exists,
-        loading: !exists  // 不存在的才显示 loading
-      }
-    })
+// ========== 操作 ==========
+async function startSprint() {
+  try {
+    await store.startSprint(props.sprintId)
+    await loadSprint()
+  } catch (e) {
+    console.error('启动冲刺失败:', e)
   }
-  
-  // 正常状态：根据实际存在返回
-  return files.map(f => {
-    const exists = f.category === 'dir'
-      ? existingFiles.value.some(ef => ef.path.startsWith(f.path))
-      : existingFiles.value.some(ef => ef.path === f.path)
-    return {
-      ...f,
-      exists,
-      loading: false
+}
+
+async function executeCurrentStage() {
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return
+
+  const iteration = getExecutableIterationForStage(stage)
+  if (!iteration) {
+    const roles = (stage?.agents || []).map(a => a.role).filter(Boolean).join(', ')
+    const snap = (sprint.value?.iterations || [])
+      .filter(i => (i?.role || '') && (roles.includes(i.role)))
+      .map(i => `${i.role}:${i.status}`)
+      .join(' | ')
+    ElMessage.info(`本阶段没有可执行的角色（roles=${roles || '-'}）。${snap ? `状态: ${snap}` : ''}`)
+    return
+  }
+
+  isExecuting.value = true
+  try {
+    await store.executeIteration(
+      props.sprintId,
+      resolveRoleIndex(iteration),
+      null,
+      iteration.role === 'developer' ? { developerBackend: developerBackendChoice.value } : {}
+    )
+    ElMessage.success('已启动执行，请等待 Agent 完成')
+    await loadSprint()
+  } catch (e) {
+    console.error('执行失败:', e)
+    ElMessage.error(e?.message || '执行失败')
+  } finally {
+    isExecuting.value = false
+  }
+}
+
+async function rerunCurrentStage() {
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return
+
+  const iteration = getRerunIterationForStage(stage)
+  if (!iteration) return
+
+  const roleIndex = resolveRoleIndex(iteration)
+  isExecuting.value = true
+  try {
+    const data = await store.rerunIteration(props.sprintId, roleIndex)
+    if (data == null) {
+      ElMessage.error(store.error || '重新执行失败')
+      return
     }
-  })
-})
-
-// 计算当前迭代是否真正完成（所有文件都已生成）
-const isIterationFullyComplete = computed(() => {
-  if (!currentIteration.value || currentIteration.value.status !== 'completed') return false
-  const files = currentOutputFiles.value
-  if (files.length === 0) return true
-  return files.every(f => f.exists)
-})
-
-// 当 sprint 刷新时重新加载文件
-watch(() => sprint.value?.status, (newStatus) => {
-  if (newStatus === 'running') {
-    loadExistingFiles()
+    await loadSprint()
+    const it = sprint.value?.iterations?.[roleIndex]
+    if (!it || it.status !== 'ready') {
+      ElMessage.warning('状态异常，未能启动 Agent')
+      return
+    }
+    await store.executeIteration(
+      props.sprintId,
+      roleIndex,
+      null,
+      it.role === 'developer' ? { developerBackend: developerBackendChoice.value } : {}
+    )
+    ElMessage.success('已重新启动执行')
+    await loadSprint()
+  } catch (e) {
+    console.error('重新执行失败:', e)
+    ElMessage.error(e?.message || '重新执行失败')
+  } finally {
+    isExecuting.value = false
   }
-})
+}
 
-// 当切换迭代器时重新加载文件
-watch(() => selectedIterationIndex.value, () => {
-  loadExistingFiles()
-  // 加载 Tester 的环境地址
-  if (isTesterRole.value) {
-    testEnvironmentUrl.value = currentIteration.value?.testEnvironmentUrl || ''
+async function confirmInput() {
+  if (!userInput.value.trim()) return
+
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return
+
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  let iteration =
+    sorted.find(i => ['waiting_input', 'pending', 'ready'].includes(i.status)) || sorted[0]
+  if (!iteration) return
+
+  try {
+    await store.inputIteration(props.sprintId, resolveRoleIndex(iteration), userInput.value)
+    await store.executeIteration(
+      props.sprintId,
+      resolveRoleIndex(iteration),
+      null,
+      iteration.role === 'developer' ? { developerBackend: developerBackendChoice.value } : {}
+    )
+    await loadSprint()
+  } catch (e) {
+    console.error('确认失败:', e)
   }
-  // 加载上一角色的执行记录
-  loadExecutionLog()
-  // 重置步骤索引
-  currentStepIndex.value = 0
-  // 重置输出预览状态
-  showOutputPreview.value = false
-})
-
-// 当输出变化时更新可编辑文本框
-watch(() => currentIteration.value?.output, (newOutput) => {
-  editedOutput.value = newOutput || ''
-}, { immediate: true })
-
-// 初始加载
-onMounted(() => {
-  loadExistingFiles()
-})
-
-const workspaceBasePath = computed(() => {
-  return `/Users/jialin.chen/WorkSpace/DevForge/workspace/${props.sprintId}/`
-})
-
-const projectBasePath = computed(() => {
-  const projectId = sprint.value?.projectId || props.sprintId
-  return `/Users/jialin.chen/WorkSpace/DevForge/projects/${projectId}/`
-})
-
-function getFileUrl(filePath, source) {
-  const base = source === 'project' ? projectBasePath.value : workspaceBasePath.value
-  return `file://${base}${filePath}`
 }
 
-function openFile(filePath, source) {
-  const url = getFileUrl(filePath, source)
-  window.open(url, '_blank')
+function copyOutput() {
+  navigator.clipboard.writeText(editableOutput.value)
 }
 
-function downloadFile(filePath, source) {
-  const url = getFileUrl(filePath, source)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filePath.split('/').pop()
-  link.click()
+async function confirmAndNextStage() {
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return
+
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  // 优先确认「刚跑完、仍为 completed」的角色；否则退化为有产出的第一个
+  let iteration = sorted.find(i => i.status === 'completed')
+  if (!iteration) {
+    iteration = sorted.find(i => i.output)
+  }
+  if (!iteration) {
+    console.warn('没有找到可确认的 iteration')
+    return
+  }
+
+  const currentOutput = editableOutput.value || selectedStageOutput.value || ''
+
+  try {
+    await store.confirmIteration(props.sprintId, resolveRoleIndex(iteration), currentOutput)
+    await loadSprint()
+
+    const stageAfter = pipelineStages.value[activeStageIndex.value]
+    if (
+      stageAfter &&
+      isStageFullyDone(stageAfter) &&
+      activeStageIndex.value < pipelineStages.value.length - 1
+    ) {
+      userInput.value = currentOutput
+      activeStageIndex.value++
+      await loadSprint()
+    }
+  } catch (e) {
+    console.error('确认失败:', e)
+    alert('确认失败: ' + e.message)
+  }
 }
 
+// 预览/打开/下载功能
 async function openPreview(file) {
   previewFile.value = file
   previewContent.value = ''
   previewError.value = ''
   previewLoading.value = true
-  showPreview.value = true
+  previewVisible.value = true
 
   try {
-    const baseUrl = import.meta.env.VITE_API_BASE || `http://${window.location.hostname}:3000`
-    const response = await fetch(`${baseUrl}/api/sprints/${props.sprintId}/file?file=${encodeURIComponent(file.path)}`)
-    if (!response.ok) {
-      const err = await response.json()
-      throw new Error(err.error || 'Failed to load file')
-    }
+    const source = file.source || 'sprint'
+    const response = await fetch(
+      `/api/sprints/${props.sprintId}/file?file=${encodeURIComponent(file.path)}&source=${source}`
+    )
     const data = await response.json()
-    if (data.type === 'directory') {
+    
+    if (data.error) {
+      previewError.value = data.error
+    } else if (data.tree) {
       previewContent.value = JSON.stringify(data.tree, null, 2)
     } else {
       previewContent.value = data.content
@@ -1269,9 +1231,1389 @@ async function openPreview(file) {
 }
 
 function closePreview() {
-  showPreview.value = false
   previewFile.value = null
   previewContent.value = ''
   previewError.value = ''
+  previewVisible.value = false
 }
+
+function openFileInBrowser(filePath, source = 'sprint') {
+  const baseUrl = source === 'project' 
+    ? `/api/local-project/content?path=${encodeURIComponent(filePath)}`
+    : `/api/sprints/${props.sprintId}/file?file=${encodeURIComponent(filePath)}`
+  window.open(baseUrl, '_blank')
+}
+
+function downloadFile(filePath, source = 'sprint') {
+  const baseUrl = source === 'project'
+    ? `/api/local-project/content?path=${encodeURIComponent(filePath)}`
+    : `/api/sprints/${props.sprintId}/file?file=${encodeURIComponent(filePath)}`
+  const link = document.createElement('a')
+  link.href = baseUrl
+  link.download = filePath.split('/').pop()
+  link.click()
+}
+
+async function loadSprint() {
+  try {
+    sprint.value = await store.fetchSprint(props.sprintId)
+    updateActiveStageIndex()
+    if (isDeveloperStageSelected.value) {
+      await loadDeveloperTaskConsole()
+    }
+  } catch (e) {
+    console.error('加载 sprint 失败:', e)
+  }
+}
+
+function updateActiveStageIndex() {
+  if (!sprint.value) return
+
+  const stages = pipelineStages.value
+  if (!stages.length) {
+    activeStageIndex.value = 0
+    return
+  }
+
+  // 优先聚焦「第一个尚未完成」的阶段（待执行/等待输入/执行中/失败），便于技术设计完成后自动落在代码开发
+  const firstIncomplete = stages.findIndex(s =>
+    ['pending', 'waiting_input', 'running', 'failed'].includes(s.status)
+  )
+  if (firstIncomplete >= 0) {
+    activeStageIndex.value = firstIncomplete
+    return
+  }
+
+  // 全部已完成：停在最后一格
+  activeStageIndex.value = Math.max(0, stages.length - 1)
+}
+
+onMounted(() => {
+  loadSprint()
+})
+
+watch(() => props.sprintId, () => {
+  loadSprint()
+})
+
+watch(activeStageIndex, (val) => {
+  selectedStage.value = val
+})
 </script>
+
+<style scoped>
+.sprint-detail {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Header */
+.sprint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Execution Flow */
+.execution-flow {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.section-title {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.pipeline-steps {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 8px 4px;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.pipeline-card {
+  position: relative;
+  width: 260px;
+  min-height: 118px;
+  text-align: left;
+  border: 1px solid #e4e7ed;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px 12px;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.pipeline-card:hover:not(:disabled) {
+  border-color: rgba(64, 158, 255, 0.6);
+  box-shadow: 0 8px 24px rgba(64, 158, 255, 0.14);
+  transform: translateY(-1px);
+}
+
+.pipeline-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  filter: grayscale(0.15);
+}
+
+.pipeline-card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pipeline-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(144, 147, 153, 0.12);
+  color: #606266;
+  flex: 0 0 auto;
+  font-size: 16px;
+}
+
+.pipeline-title {
+  min-width: 0;
+  flex: 1;
+}
+
+.pipeline-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pipeline-name {
+  font-size: 14px;
+  font-weight: 650;
+  color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pipeline-meta {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+}
+
+.pipeline-meta-label {
+  width: 44px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #909399;
+  line-height: 18px;
+}
+
+.pipeline-meta-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pipeline-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(64, 158, 255, 0.08);
+  color: #409eff;
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.pipeline-agent-name {
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.pipeline-skills {
+  font-size: 12px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pipeline-current-indicator {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #409eff;
+  background: rgba(64, 158, 255, 0.10);
+  border: 1px solid rgba(64, 158, 255, 0.22);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pipeline-connector {
+  display: flex;
+  align-items: center;
+}
+
+.pipeline-connector-line {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #dcdfe6;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Status theming */
+.pipeline-step.is-completed .pipeline-badge {
+  background: rgba(103, 194, 58, 0.14);
+  color: #67c23a;
+}
+
+.pipeline-step.is-running .pipeline-badge {
+  background: rgba(230, 162, 60, 0.16);
+  color: #e6a23c;
+}
+
+.pipeline-step.is-failed .pipeline-badge {
+  background: rgba(245, 108, 108, 0.16);
+  color: #f56c6c;
+}
+
+.pipeline-step.is-completed .pipeline-connector-line {
+  background: rgba(103, 194, 58, 0.45);
+}
+
+.pipeline-step.is-running .pipeline-connector-line {
+  background: rgba(230, 162, 60, 0.45);
+}
+
+.pipeline-step.is-failed .pipeline-connector-line {
+  background: rgba(245, 108, 108, 0.45);
+}
+
+.pipeline-step.is-current .pipeline-card {
+  border-color: rgba(64, 158, 255, 0.8);
+  box-shadow: 0 10px 30px rgba(64, 158, 255, 0.18);
+}
+
+.pipeline-step.is-current .pipeline-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 12px 12px 0 0;
+  background: linear-gradient(90deg, rgba(64, 158, 255, 0.4), rgba(64, 158, 255, 1), rgba(64, 158, 255, 0.4));
+  background-size: 200% 100%;
+  animation: df-flow 1.6s linear infinite;
+}
+
+.pipeline-step.is-current .pipeline-connector-line::after {
+  content: '';
+  position: absolute;
+  left: -30%;
+  top: 0;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  animation: df-scan 1.2s linear infinite;
+}
+
+@keyframes df-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes df-scan {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(260%); }
+}
+
+.flow-step:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
+}
+
+.flow-step.is-active {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.flow-step.is-completed {
+  border-color: #67c23a;
+  background: #f0f9eb;
+}
+
+.flow-step.is-failed {
+  border-color: #f56c6c;
+  background: #fef0f0;
+}
+
+.flow-step.is-running {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+}
+
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  font-size: 16px;
+}
+
+.step-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+/* Stage Detail */
+.stage-detail {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+}
+
+.stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e4e7ed;
+  margin-bottom: 16px;
+}
+
+.stage-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stage-icon {
+  font-size: 24px;
+}
+
+.stage-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.stage-desc {
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  color: #909399;
+}
+
+.stage-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* User Input */
+.user-input-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+}
+
+.user-input-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.back-btn {
+  font-size: 18px;
+  color: #606266;
+  padding: 8px;
+  margin-left: -8px;
+  border-radius: 8px;
+  transition:
+    background-color var(--df-duration-fast, 0.12s) ease,
+    color var(--df-duration-fast, 0.12s) ease,
+    transform var(--df-duration-fast, 0.12s) ease;
+}
+
+.back-btn:hover {
+  background: #f5f7fa;
+  color: #409eff;
+}
+
+.back-btn:active:not(:disabled) {
+  background: #ebeef5;
+  transform: scale(0.96);
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sprint-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sprint-id {
+  font-size: 12px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.start-btn {
+  min-width: 120px;
+}
+
+/* Cards */
+.requirement-card,
+.stage-detail-card,
+.pipeline-card {
+  margin-bottom: 20px;
+  border-radius: 8px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.header-icon {
+  color: #409eff;
+}
+
+.requirement-text {
+  color: #606266;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Steps Custom */
+.el-steps-custom {
+  padding: 20px 0;
+}
+
+.el-steps-custom .is-clickable {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.el-steps-custom .is-clickable:hover .el-step__title {
+  color: #409eff;
+}
+
+.el-steps-custom .is-clickable:hover .step-icon {
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.35);
+}
+
+.el-steps-custom .is-clickable:active .step-icon {
+  transform: scale(0.92);
+}
+
+.step-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  background: #f0f2f5;
+  color: #909399;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.el-steps-custom .is-clickable:focus-visible {
+  outline: 2px solid #79bbff;
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.step-icon-pending {
+  background: #f0f2f5;
+  color: #909399;
+}
+
+.step-icon-running {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.step-icon-completed {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.step-icon-failed {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.step-title-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stage-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.working-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.working-agent-tag {
+  font-size: 12px;
+}
+
+.skills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.skill-tag {
+  font-size: 11px;
+}
+
+.waiting-info,
+.completed-info {
+  margin-top: 4px;
+}
+
+.step-desc-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.agents-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.agent-chip-running,
+.agent-chip-waiting_input {
+  background: #fdf6ec;
+}
+
+.agent-chip-completed,
+.agent-chip-confirmed {
+  background: #f0f9eb;
+}
+
+.agent-icon {
+  font-size: 12px;
+}
+
+.agent-name {
+  color: #606266;
+}
+
+.stage-desc-text {
+  font-size: 12px;
+  color: #909399;
+}
+
+.dev-backend-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 0;
+  margin-top: 12px;
+  border-top: 1px solid #ebeef5;
+  font-size: 13px;
+}
+
+.dev-backend-label {
+  color: #606266;
+  font-weight: 500;
+}
+
+.dev-backend-hint {
+  color: #909399;
+  font-size: 12px;
+  flex-basis: 100%;
+}
+
+/* Stage Action Bar */
+.stage-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 0;
+  border-top: 1px solid #ebeef5;
+  margin-top: 16px;
+}
+
+.action-left,
+.action-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rerun-btn {
+  color: #909399;
+}
+
+.rerun-btn:hover {
+  color: #409eff;
+}
+
+/* Detail Card */
+.detail-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detail-header-right {
+  margin-left: auto;
+}
+
+.detail-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #409eff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.detail-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+  margin: 0 0 10px 0;
+}
+
+.input-textarea,
+.output-textarea {
+  margin-bottom: 10px;
+}
+
+.input-actions,
+.output-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.task-metrics-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.task-metric-card {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.task-metric-card.success {
+  border-color: #c2e7b0;
+  background: #f0f9eb;
+}
+
+.task-metric-card.warning {
+  border-color: #f5dab1;
+  background: #fdf6ec;
+}
+
+.task-metric-card.danger {
+  border-color: #f5c2c7;
+  background: #fef0f0;
+}
+
+.task-metric-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.task-metric-value {
+  margin-top: 4px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.task-metrics-warning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.task-metrics-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+}
+
+.task-metrics-table-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 10px;
+  border-bottom: 1px solid #f2f3f5;
+  background: #fafafa;
+}
+
+.task-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.task-metrics-table th,
+.task-metrics-table td {
+  text-align: left;
+  font-size: 12px;
+  color: #606266;
+  border-bottom: 1px solid #f2f3f5;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.task-metrics-table th {
+  color: #909399;
+  font-weight: 600;
+  background: #fafafa;
+}
+
+.task-metrics-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Executing State */
+.executing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 0;
+  color: #909399;
+}
+
+.executing-state .el-icon {
+  color: #409eff;
+}
+
+.executing-text {
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.executing-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 20px;
+  background: #f0f9eb;
+  border-radius: 8px;
+}
+
+.agent-icon-large {
+  font-size: 24px;
+}
+
+.agent-name-large {
+  font-size: 16px;
+  font-weight: 500;
+  color: #67c23a;
+}
+
+/* 流程恢复 */
+.recovery-section {
+  background: #fdf6ec;
+  border: 1px solid #f5dab1;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.recovery-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.55;
+}
+
+/* 分步重跑 */
+.partial-rerun-section {
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.partial-rerun-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.55;
+}
+
+.partial-rerun-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.partial-rerun-row:last-child {
+  margin-bottom: 0;
+}
+
+.partial-rerun-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 120px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.partial-rerun-select {
+  min-width: 220px;
+  flex: 1;
+}
+
+/* 输出文件列表 */
+.output-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.output-file-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  border: 1px solid #ebeef5;
+  font-size: 13px;
+  color: #606266;
+}
+
+.output-file-row:last-child {
+  margin-bottom: 0;
+}
+
+.output-file-row.file-exists {
+  background: #f0f9eb;
+  border-color: #c2e7b0;
+}
+
+.output-file-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.output-file-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.output-file-icon {
+  flex-shrink: 0;
+  color: #409eff;
+}
+
+.file-name {
+  font-weight: 600;
+  color: #303133;
+}
+
+.file-path {
+  font-size: 12px;
+  color: #909399;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.file-description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #606266;
+}
+
+.file-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.file-actions .el-button {
+  padding: 4px;
+}
+
+/* Preview */
+.preview-loading,
+.preview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: #909399;
+}
+
+.preview-content {
+  max-height: 500px;
+  overflow: auto;
+  background: #f5f7fa;
+  padding: 16px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #606266;
+}
+
+.preview-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* History */
+.history-card {
+  border-radius: 6px;
+}
+
+.history-text {
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.collab-steps-mini {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.collab-mini-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+.collaboration-section {
+  background: #fafcff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.collaboration-steps-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.collab-step-title {
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 4px;
+}
+
+.collab-step-num {
+  display: inline-block;
+  min-width: 18px;
+  color: #409eff;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.collab-step-detail {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #606266;
+}
+
+/* Developer Task Console */
+.developer-task-console {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e6f4ff 100%);
+  border: 1px solid #cce5ff;
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.developer-console-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #d9ecff;
+}
+
+.developer-console-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.developer-console-stat .label {
+  font-size: 11px;
+  color: #909399;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.developer-console-stat strong {
+  font-size: 18px;
+  color: #303133;
+}
+
+.developer-console-stat .value {
+  font-size: 13px;
+  color: #606266;
+  max-width: 400px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.developer-console-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.developer-console-body {
+  display: flex;
+  gap: 16px;
+  min-height: 300px;
+}
+
+.run-list {
+  width: 200px;
+  flex-shrink: 0;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.run-list-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.run-list-items {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.run-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+
+.run-item:hover {
+  background: #f5f7fa;
+}
+
+.run-item.active {
+  background: #ecf5ff;
+  border: 1px solid #b3d8ff;
+}
+
+.run-item.fail {
+  border-left: 3px solid #f56c6c;
+}
+
+.run-item.warn {
+  border-left: 3px solid #e6a23c;
+}
+
+.run-item .idx {
+  font-weight: 600;
+  color: #409eff;
+  min-width: 24px;
+}
+
+.run-item .status {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.run-item.fail .status {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+.run-item.warn .status {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.run-item .title {
+  flex: 1;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-detail {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.run-detail-head {
+  margin-bottom: 12px;
+}
+
+.run-detail-head strong {
+  font-size: 15px;
+  color: #303133;
+}
+
+.run-detail-head .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.run-detail-error {
+  margin-bottom: 12px;
+}
+
+.run-files {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.run-files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.run-file {
+  padding: 4px 10px;
+  border: 1px solid #dcdfe6;
+  background: #fff;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.run-file:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.run-file.active {
+  background: #ecf5ff;
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.run-files-diff {
+  background: #1e1e1e;
+  border-radius: 6px;
+  padding: 12px;
+  max-height: 350px;
+  overflow: auto;
+}
+
+.diff-pre {
+  margin: 0;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.diff-add {
+  color: #98c379;
+  display: block;
+}
+
+.diff-remove {
+  color: #e06c75;
+  display: block;
+}
+
+.diff-context {
+  color: #5c6370;
+  display: block;
+}
+
+.run-no-files {
+  color: #909399;
+  font-size: 13px;
+  text-align: center;
+  padding: 40px;
+}
+
+.collab-handoff {
+  margin: 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+</style>

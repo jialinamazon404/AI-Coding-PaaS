@@ -3,42 +3,44 @@
   <Login v-if="!isLoggedIn" @login="handleLogin" />
   
   <!-- Main interface -->
-  <div v-else class="min-h-screen">
+  <div v-else class="min-h-screen bg-white">
     <!-- Header -->
-    <header class="glass sticky top-0 z-50 border-b border-vue-border">
+    <header class="sticky top-0 z-50 border-b" style="border-color: #e4e7ed; background: #fff;">
       <div class="max-w-7xl mx-auto px-6">
         <div class="flex items-center justify-between h-16">
           <div class="flex items-center space-x-6">
             <div class="flex items-center space-x-2">
-              <div class="w-8 h-8 bg-gradient-to-br from-vue-primary to-vue-secondary rounded-lg flex items-center justify-center glow-green">
+              <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
                 <span class="text-white font-bold text-sm">AI</span>
               </div>
-              <h1 class="text-lg font-semibold gradient-text">AI Coding PasS</h1>
+              <h1 class="text-lg font-semibold" style="color: #409eff;">AI Coding PasS</h1>
             </div>
             <nav class="flex space-x-1 ml-6">
-              <button 
+              <button
                 v-for="tab in tabs" 
                 :key="tab.id"
+                type="button"
                 @click="handleTabChange(tab.id)"
-                class="px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200"
+                class="app-tab px-4 py-1.5 text-sm font-medium transition-all duration-200 select-none min-h-[36px] active:scale-[0.98]"
                 :class="currentTab === tab.id 
-                  ? 'bg-vue-primary/20 text-vue-primary' 
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  ? 'app-tab-active' 
+                  : 'app-tab-idle'"
               >
                 {{ tab.label }}
               </button>
             </nav>
           </div>
           <div class="flex items-center space-x-4">
-            <span class="text-sm" :class="connected ? 'text-vue-primary' : 'text-red-400'">
+            <span class="text-sm" :class="connected ? 'text-green-500' : 'text-red-400'">
               {{ connected ? '●' : '○' }} {{ connected ? '已连接' : '未连接' }}
             </span>
-            <span class="text-sm text-gray-400">
+            <span class="text-sm text-gray-500">
               {{ currentUser?.username || 'User' }}
             </span>
             <button
+              type="button"
               @click="handleLogout"
-              class="px-3 py-1.5 text-gray-400 hover:text-white text-sm transition-colors"
+              class="px-3 py-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 active:bg-gray-200 text-sm transition-all duration-150 select-none min-h-[36px] active:scale-[0.98]"
             >
               退出
             </button>
@@ -60,6 +62,15 @@
           :project-id="selectedProjectId" 
           @back="currentTab = 'projects'"
           @select-sprint="handleSprintSelect"
+          @view-code="handleProjectCodeView"
+        />
+      </div>
+
+      <!-- Project Code -->
+      <div v-else-if="currentTab === 'project-code'">
+        <ProjectCode
+          :project-id="selectedCodeProjectId"
+          @back="handleBackToProject"
         />
       </div>
       
@@ -85,7 +96,7 @@
       <div v-else-if="currentTab === 'detail'">
         <PipelineDetail 
           :pipeline-id="selectedPipelineId" 
-          @back="currentTab = 'pipelines'"
+          @back="handleBackFromPipelineDetail"
         />
       </div>
       
@@ -107,6 +118,7 @@ import PipelineList from './views/PipelineList.vue'
 import PipelineDetail from './views/PipelineDetail.vue'
 import AgentManager from './views/AgentManager.vue'
 import Reports from './views/Reports.vue'
+import ProjectCode from './views/ProjectCode.vue'
 import Login from './views/Login.vue'
 
 const projectStore = useProjectStore()
@@ -115,12 +127,13 @@ const currentTab = ref('projects')
 const selectedProjectId = ref(null)
 const selectedSprintId = ref(null)
 const selectedPipelineId = ref(null)
+const selectedCodeProjectId = ref(null)
+const previousTabBeforePipelineDetail = ref('projects')
 const isLoggedIn = ref(false)
 const currentUser = ref(null)
 
 const tabs = [
   { id: 'projects', label: '项目' },
-  { id: 'pipelines', label: '流水线' },
   { id: 'agents', label: '角色管理' },
   { id: 'reports', label: '测试报告' }
 ]
@@ -165,9 +178,21 @@ function handleBackToProject() {
   selectedSprintId.value = null
 }
 
+function handleProjectCodeView(projectId) {
+  selectedCodeProjectId.value = projectId
+  currentTab.value = 'project-code'
+}
+
 function handlePipelineSelect(id) {
+  previousTabBeforePipelineDetail.value = currentTab.value
   selectedPipelineId.value = id
   currentTab.value = 'detail'
+}
+
+function handleBackFromPipelineDetail() {
+  currentTab.value = previousTabBeforePipelineDetail.value === 'detail'
+    ? 'projects'
+    : previousTabBeforePipelineDetail.value
 }
 
 onMounted(() => {
@@ -191,5 +216,41 @@ onMounted(() => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+.app-tab {
+  position: relative;
+  border-radius: 8px;
+}
+
+.app-tab::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -8px;
+  height: 2px;
+  border-radius: 999px;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.2s ease;
+  background: #409eff;
+}
+
+.app-tab-active {
+  color: #303133;
+}
+
+.app-tab-active::after {
+  transform: scaleX(1);
+}
+
+.app-tab-idle {
+  color: #909399;
+}
+
+.app-tab-idle:hover {
+  color: #606266;
+  background: #f5f7fa;
 }
 </style>
