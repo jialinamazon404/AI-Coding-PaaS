@@ -11,6 +11,8 @@ import { spawn } from 'child_process';
 import os from 'os';
 import { ROUTES } from '../../config/pipelineConfig.js';
 import { createHarness } from '../../harness/index.js';
+import { buildWsBase, normalizeHost, resolveApiBase } from '../../utils/network-address.js';
+import { buildPreviewUrl, detectSprintPreviewTargets } from './preview-target.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -25,6 +27,22 @@ function getLocalIP() {
     }
   }
   return '127.0.0.1';
+}
+
+function getApiHost() {
+  return normalizeHost(process.env.HOST, '0.0.0.0');
+}
+
+function getApiPort() {
+  return process.env.PORT || 3000;
+}
+
+function getApiBase() {
+  return resolveApiBase({
+    apiBase: process.env.API_BASE,
+    host: getApiHost(),
+    port: getApiPort()
+  });
 }
 
 // 配置路径 - 新结构 projects/{projectId}/sprints/{sprintId}/
@@ -171,6 +189,102 @@ async function resolveLatestTasksPathForSprint(sprint) {
 
 // 跟踪运行中的 agent 进程
 const runningAgents = new Map();
+const runningPreviews = new Map();
+
+function getBrowserHostname(req) {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').trim();
+  if (!host) return getLocalIP();
+  return host.split(':')[0] || getLocalIP();
+}
+
+function getSprintProjectRoot(sprint) {
+  return path.join(PROJECTS_DIR, sprint.projectId);
+}
+
+function serializePreview(preview, hostname) {
+  if (!preview) return { status: 'stopped' };
+  const frontend = preview.targets?.frontend || null;
+  const backend = preview.targets?.backend || null;
+  const frontendUrl = frontend?.port ? buildPreviewUrl({ host: '0.0.0.0', port: frontend.port, hostname }) : null;
+  const backendUrl = backend?.port ? buildPreviewUrl({ host: '0.0.0.0', port: backend.port, hostname }) : null;
+  return {
+    status: preview.status || 'stopped',
+    type: preview.type || 'frontend',
+    framework: frontend?.framework || preview.framework || null,
+    port: frontend?.port || preview.port || null,
+    url: frontendUrl || (preview.port ? buildPreviewUrl({ host: '0.0.0.0', port: preview.port, hostname }) : null),
+    cwd: frontend?.cwd || preview.cwd || null,
+    lastError: preview.lastError || '',
+    startedAt: preview.startedAt || null,
+    hasFrontend: preview.hasFrontend !== false,
+    hasBackend: !!preview.hasBackend,
+    backendMockFiles: preview.backendMockFiles || [],
+    targets: {
+      frontend: frontend ? {
+        ...frontend,
+        url: frontendUrl
+      } : {
+        status: 'stopped',
+        hasFrontend: false
+      },
+      backend: backend ? {
+        ...backend,
+        baseUrl: backendUrl || backend.baseUrl || null
+      } : {
+        status: 'stopped',
+        hasBackend: false
+      }
+    }
+  };
+}
+
+function isProcessAlive(pid) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function cleanupPreviewTarget(preview, target) {
+  if (!preview?.targets?.[target]) return;
+  const t = preview.targets[target];
+  if (t.proc && !t.proc.killed && t.proc.exitCode === null) {
+    try {
+      t.proc.kill('SIGTERM');
+    } catch (_e) {}
+  }
+  preview.targets[target] = {
+    ...(preview.targets[target] || {}),
+    proc: null,
+    pid: null,
+    status: 'stopped'
+  };
+}
+
+function recomputePreviewStatus(preview) {
+  const statuses = [preview?.targets?.frontend?.status, preview?.targets?.backend?.status].filter(Boolean);
+  if (!statuses.length) return 'stopped';
+  if (statuses.includes('running')) return 'running';
+  if (statuses.includes('failed')) return 'failed';
+  return 'stopped';
+}
+
+function cleanupPreview(sprintId, target = 'all') {
+  const preview = runningPreviews.get(sprintId);
+  if (!preview) return;
+  if (target === 'all') {
+    cleanupPreviewTarget(preview, 'frontend');
+    cleanupPreviewTarget(preview, 'backend');
+    runningPreviews.delete(sprintId);
+    return;
+  }
+  cleanupPreviewTarget(preview, target);
+  preview.status = recomputePreviewStatus(preview);
+  runningPreviews.set(sprintId, preview);
+}
 
 /** Harness：技能预热与进程池统计（sprint-agent-executor 仍为独立 spawn，统计可观测） */
 let harnessInstance = null;
@@ -598,8 +712,7 @@ function pruneDeadRunningAgent(runningKey) {
 
 /** 本进程 HTTP 自调用，复用 POST /execute 的校验与 spawn（如 tech_coach 完成后自动跑架构师） */
 async function triggerExecuteSprintRoleViaLoopback(sprintId, roleIndex, body = {}) {
-  const apiPort = process.env.PORT || 3000;
-  const url = `http://127.0.0.1:${apiPort}/api/sprints/${sprintId}/iterations/${roleIndex}/execute`;
+  const url = `${getApiBase()}/api/sprints/${sprintId}/iterations/${roleIndex}/execute`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -988,6 +1101,7 @@ app.put('/api/sprints/:id', async (req, res) => {
 // 删除冲刺
 app.delete('/api/sprints/:id', async (req, res) => {
   try {
+    cleanupPreview(req.params.id);
     await sprintManager.delete(req.params.id);
     io.emit('sprint:deleted', { id: req.params.id });
     res.status(204).send();
@@ -1582,7 +1696,7 @@ app.post('/api/sprints/:sprintId/iterations/:roleIndex/execute', async (req, res
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        API_BASE: `http://localhost:${apiPort}`,
+        API_BASE: getApiBase(),
         AGENT_MODEL: model,
         DEVFORGE_DEVELOPER_BACKEND: developerBackendForEnv,
         // 显式覆盖，避免父进程曾注入 attach 而子进程仍继承 DEVFORGE_OPENCODE_ATTACH_URL
@@ -1708,6 +1822,183 @@ app.get('/api/sprints/:id/logs', async (req, res) => {
       return res.status(404).json({ error: 'Sprint not found' });
     }
     res.json(sprint.logs || []);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/sprints/:sprintId/preview/meta', async (req, res) => {
+  try {
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+    const hostname = getBrowserHostname(req);
+    const meta = await detectSprintPreviewTargets({
+      projectRoot: getSprintProjectRoot(sprint),
+      hostname
+    });
+    res.json(meta);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/sprints/:sprintId/preview/status', async (req, res) => {
+  try {
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+    const hostname = getBrowserHostname(req);
+    const preview = runningPreviews.get(sprint.id);
+    if (!preview) {
+      const meta = await detectSprintPreviewTargets({
+        projectRoot: getSprintProjectRoot(sprint),
+        hostname
+      });
+      return res.json({ status: 'stopped', ...meta });
+    }
+    for (const t of ['frontend', 'backend']) {
+      const target = preview.targets?.[t];
+      if (target?.pid && !isProcessAlive(target.pid) && target.status === 'running') {
+        target.status = 'stopped';
+      }
+    }
+    preview.status = recomputePreviewStatus(preview);
+    runningPreviews.set(sprint.id, preview);
+    res.json(serializePreview(runningPreviews.get(sprint.id), hostname));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/sprints/:sprintId/preview/start', async (req, res) => {
+  try {
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+    const hostname = getBrowserHostname(req);
+    const target = ['frontend', 'backend', 'all'].includes(req.body?.target) ? req.body.target : 'frontend';
+    const meta = await detectSprintPreviewTargets({
+      projectRoot: getSprintProjectRoot(sprint),
+      hostname
+    });
+    const existing = runningPreviews.get(sprint.id) || {
+      sprintId: sprint.id,
+      projectId: sprint.projectId,
+      status: 'stopped',
+      hasFrontend: meta.hasFrontend,
+      hasBackend: meta.hasBackend,
+      backendMockFiles: meta.backendMockFiles || [],
+      startedAt: null,
+      lastError: '',
+      targets: {
+        frontend: { ...(meta.targets?.frontend || { hasFrontend: false }), status: 'stopped' },
+        backend: { ...(meta.targets?.backend || { hasBackend: false }), status: 'stopped' }
+      }
+    };
+
+    const targetsToStart = target === 'all' ? ['frontend', 'backend'] : [target];
+    for (const t of targetsToStart) {
+      const tMeta = meta.targets?.[t];
+      if (t === 'frontend' && !meta.hasFrontend) {
+        return res.status(400).json({ error: tMeta?.reason || 'No runnable frontend found', ...meta });
+      }
+      if (t === 'backend' && !tMeta?.hasBackend) {
+        return res.status(400).json({ error: tMeta?.reason || 'No runnable backend found', ...meta });
+      }
+      const current = existing.targets?.[t];
+      if (current?.status === 'running' && isProcessAlive(current.pid)) continue;
+      const proc = spawn(tMeta.command, tMeta.args || [], {
+        cwd: t === 'frontend' ? tMeta.frontendPath : tMeta.backendPath,
+        detached: false,
+        stdio: 'ignore',
+        shell: false
+      });
+      existing.targets[t] = {
+        ...tMeta,
+        pid: proc.pid,
+        proc,
+        status: 'running',
+        startedAt: new Date().toISOString(),
+        lastError: ''
+      };
+      proc.on('exit', (code, signal) => {
+        const p = runningPreviews.get(sprint.id);
+        if (!p || p.targets?.[t]?.pid !== proc.pid) return;
+        p.targets[t].status = code === 0 || signal === 'SIGTERM' ? 'stopped' : 'failed';
+        p.targets[t].lastError = code && code !== 0 ? `Preview exited with code ${code}` : p.targets[t].lastError;
+        p.status = recomputePreviewStatus(p);
+        io.emit('preview:updated', { sprintId: sprint.id, preview: serializePreview(p, hostname) });
+      });
+    }
+
+    existing.status = recomputePreviewStatus(existing);
+    existing.type = target === 'backend' ? 'backend' : 'frontend';
+    existing.framework = existing.targets?.frontend?.framework || null;
+    existing.port = existing.targets?.frontend?.port || null;
+    existing.cwd = existing.targets?.frontend?.frontendPath || null;
+    existing.startedAt = new Date().toISOString();
+    existing.hasFrontend = meta.hasFrontend;
+    existing.hasBackend = meta.hasBackend;
+    existing.backendMockFiles = meta.backendMockFiles || [];
+    runningPreviews.set(sprint.id, existing);
+
+    io.emit('preview:updated', { sprintId: sprint.id, preview: serializePreview(existing, hostname) });
+    res.json(serializePreview(existing, hostname));
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/sprints/:sprintId/preview/stop', async (req, res) => {
+  try {
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+    const hostname = getBrowserHostname(req);
+    const target = ['frontend', 'backend', 'all'].includes(req.body?.target) ? req.body.target : 'all';
+    cleanupPreview(sprint.id, target);
+    const current = runningPreviews.get(sprint.id);
+    const payload = current ? serializePreview(current, hostname) : { status: 'stopped' };
+    io.emit('preview:updated', { sprintId: sprint.id, preview: payload });
+    res.json(payload);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/sprints/:sprintId/preview/api/request', async (req, res) => {
+  try {
+    const sprint = await sprintManager.get(req.params.sprintId);
+    if (!sprint) return res.status(404).json({ error: 'Sprint not found' });
+    const preview = runningPreviews.get(sprint.id);
+    const backend = preview?.targets?.backend;
+    if (!backend || backend.status !== 'running' || !backend.port) {
+      return res.status(400).json({ error: 'BACKEND_PREVIEW_NOT_RUNNING', message: 'Backend preview is not running for this sprint' });
+    }
+    const method = String(req.body?.method || 'GET').toUpperCase();
+    const requestPath = String(req.body?.path || '/');
+    const headers = (req.body?.headers && typeof req.body.headers === 'object') ? req.body.headers : {};
+    const body = req.body?.body;
+    const url = `http://127.0.0.1:${backend.port}${requestPath.startsWith('/') ? requestPath : `/${requestPath}`}`;
+    const startedAt = Date.now();
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined
+    });
+    const text = await response.text();
+    res.json({
+      status: response.status,
+      statusText: response.statusText,
+      durationMs: Date.now() - startedAt,
+      headers: Object.fromEntries(response.headers.entries()),
+      body: text
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2229,10 +2520,74 @@ app.get('/api/sprints/:sprintId/file', async (req, res) => {
       legacyTesterAliases.push(path.join(baseWorkspacePath, 'output', 'security-report.md'));
       legacyTesterAliases.push(path.join(baseWorkspacePath, 'tester', 'security-scan.md'));
     }
+
+    // 历史兼容：Dashboard 预期 ops/ops-config.md、ops/Dockerfile，但执行器常写到 output/、workspace 根目录或多 Dockerfile
+    const legacyOpsAliases = [];
+    if (file === 'ops/ops-config.md') {
+      for (const p of [
+        path.join(baseWorkspacePath, 'output', 'ops-config.md'),
+        path.join(baseWorkspacePath, 'ops-config.md')
+      ]) {
+        if (fsSync.existsSync(p)) legacyOpsAliases.push(p);
+      }
+    }
+    if (file === 'ops/Dockerfile') {
+      const opsDir = path.join(baseWorkspacePath, 'ops');
+      const tryDockerNames = [
+        'Dockerfile.frontend',
+        'Dockerfile.backend',
+        'Dockerfile.dev',
+        'Dockerfile.prod',
+        'Dockerfile'
+      ];
+      for (const name of tryDockerNames) {
+        const p = path.join(opsDir, name);
+        if (fsSync.existsSync(p)) legacyOpsAliases.push(p);
+      }
+      if (fsSync.existsSync(opsDir)) {
+        try {
+          for (const name of fsSync.readdirSync(opsDir)) {
+            if (!/^dockerfile/i.test(name)) continue;
+            const p = path.join(opsDir, name);
+            if (!legacyOpsAliases.includes(p)) legacyOpsAliases.push(p);
+          }
+        } catch (_e) {
+          /* ignore */
+        }
+      }
+    }
+
+    // 迭代优化：Dashboard 预期 output/*.md，模型常写到 evolver/ 或 workspace 根目录
+    const legacyEvolverAliases = [];
+    if (file === 'output/evolver-report.md') {
+      for (const p of [
+        path.join(baseWorkspacePath, 'evolver', 'evolver-report.md'),
+        path.join(baseWorkspacePath, 'evolver-report.md')
+      ]) {
+        if (fsSync.existsSync(p)) legacyEvolverAliases.push(p);
+      }
+    }
+    if (file === 'output/tech-debt.md') {
+      for (const p of [
+        path.join(baseWorkspacePath, 'evolver', 'tech-debt.md'),
+        path.join(baseWorkspacePath, 'tech-debt.md')
+      ]) {
+        if (fsSync.existsSync(p)) legacyEvolverAliases.push(p);
+      }
+    }
+
+    // 当请求路径已是 output/xxx.md 时，优先直连 workspace（避免再走 output/output/xxx 的误路径）
+    const outputWorkspaceDirect = [];
+    if (typeof file === 'string' && file.startsWith('output/') && !file.includes('..')) {
+      outputWorkspaceDirect.push(path.join(baseWorkspacePath, file));
+    }
     
     // 尝试多个可能的位置：先项目目录（代码/OpenSpec），再 workspace（执行记录）
     const possiblePaths = [
       ...legacyTesterAliases,
+      ...legacyOpsAliases,
+      ...legacyEvolverAliases,
+      ...outputWorkspaceDirect,
       path.join(projectPath, file),                             // 项目根目录文件
       path.join(projectPath, 'src', file),                      // src/ 代码文件
       path.join(projectPath, 'openspec', file),                 // openspec/ 文件
@@ -2347,7 +2702,8 @@ app.get('/api/sprints/:sprintId/files', async (req, res) => {
       tech_coach: ['tech-coach/tech-implementation.md', 'output/user-stories.md', 'output/tech-feasibility.md'],
       developer: ['developer/README.md', 'developer/API.md', 'developer/dev-summary.md'],
       tester: ['tester/test-report.md', 'tester/security-report.md', 'tester/test-cases.md', 'tester/test-results.md', 'tester/security-scan.md'],
-      ops: ['ops/Dockerfile', 'ops/docker-compose.yml', 'ops/ops-config.md', 'ops/env-analysis.md', 'ops/.github/workflows/deploy.yml']
+      ops: ['ops/Dockerfile', 'ops/docker-compose.yml', 'ops/ops-config.md', 'ops/env-analysis.md', 'ops/.github/workflows/deploy.yml'],
+      evolver: ['output/evolver-report.md', 'output/tech-debt.md']
     };
     
     const allFiles = [];
@@ -2370,6 +2726,50 @@ app.get('/api/sprints/:sprintId/files', async (req, res) => {
         }
       }
     }
+
+    const seenSprintPaths = new Set(allFiles.filter((f) => f.source === 'sprint').map((f) => f.path));
+    async function pushSprintArtifact(relPath, role = 'ops') {
+      if (seenSprintPaths.has(relPath)) return;
+      const full = path.join(basePath, relPath);
+      if (!fsSync.existsSync(full)) return;
+      let st;
+      try {
+        st = await fs.stat(full);
+      } catch (_e) {
+        return;
+      }
+      if (!st.isFile()) return;
+      seenSprintPaths.add(relPath);
+      allFiles.push({
+        role,
+        name: path.basename(relPath),
+        path: relPath,
+        size: st.size,
+        exists: true,
+        source: 'sprint'
+      });
+    }
+
+    // Ops：补充多文件名 Dockerfile*、ops-config 多位置（与 roleFileMap 固定名对齐前的真实落盘）
+    const opsWorkspaceDir = path.join(basePath, 'ops');
+    await pushSprintArtifact('output/ops-config.md');
+    await pushSprintArtifact('ops-config.md');
+    if (fsSync.existsSync(opsWorkspaceDir)) {
+      try {
+        const opsNames = await fs.readdir(opsWorkspaceDir);
+        for (const name of opsNames) {
+          if (/^dockerfile/i.test(name)) {
+            await pushSprintArtifact(`ops/${name}`);
+          }
+        }
+      } catch (_e) {
+        /* ignore */
+      }
+    }
+
+    // Evolver：模型常写到 evolver/ 而非 output/
+    await pushSprintArtifact('evolver/evolver-report.md', 'evolver');
+    await pushSprintArtifact('evolver/tech-debt.md', 'evolver');
     
     // 扫描项目代码文件
     if (fsSync.existsSync(projectSrcPath)) {
@@ -2547,8 +2947,9 @@ async function start() {
   await projectManager.load();
   await sprintManager.load();
   
-  const PORT = process.env.PORT || 3000;
-  const HOST = process.env.HOST || '0.0.0.0';
+  const PORT = getApiPort();
+  const HOST = getApiHost();
+  const API_BASE = getApiBase();
   const localIP = getLocalIP();
   httpServer.listen(PORT, HOST, () => {
     if (HARNESS_WARMUP_ON_START) {
@@ -2556,11 +2957,11 @@ async function start() {
     }
     console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║          AI Coding PasS API Server                    ║
+║          AI Coding PaaS API Server                    ║
 ║                                                           ║
+║  HTTP:      ${API_BASE}                         ║
 ║  HTTP:      http://${localIP}:${PORT}                         ║
-║  HTTP:      http://localhost:${PORT}                         ║
-║  WebSocket: ws://${localIP}:${PORT}                           ║
+║  WebSocket: ${buildWsBase({ host: HOST, port: PORT })}                           ║
 ║                                                           ║
 ║  Endpoints:                                              ║
 ║  - POST   /api/projects           Create project          ║
@@ -2581,5 +2982,21 @@ async function start() {
     `);
   });
 }
+
+function shutdownPreviewProcesses() {
+  for (const sprintId of runningPreviews.keys()) {
+    cleanupPreview(sprintId);
+  }
+}
+
+process.on('SIGINT', () => {
+  shutdownPreviewProcesses();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  shutdownPreviewProcesses();
+  process.exit(0);
+});
 
 start().catch(console.error);

@@ -18,13 +18,20 @@ import { spawn, spawnSync } from 'child_process';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import { readSkillWithFallback } from './config/skillPaths.js';
+import { resolveApiBase } from './utils/network-address.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ENTRY_FILE = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const IS_CLI_ENTRY = ENTRY_FILE === fileURLToPath(import.meta.url);
 const ROOT = __dirname;
 const WORKSPACE = path.join(ROOT, 'workspace');
 const PROJECTS = path.join(ROOT, 'projects');
 
-const API_BASE = process.env.API_BASE || 'http://localhost:3000';
+const API_BASE = resolveApiBase({
+  apiBase: process.env.API_BASE,
+  host: process.env.HOST,
+  port: process.env.PORT || 3000
+});
 
 /** 多步骤角色输出分节分隔符（显式 stepIndex 重跑时按节覆盖） */
 const STEP_OUTPUT_SEPARATOR = '\n\n---\n\n';
@@ -467,6 +474,94 @@ async function writeDeveloperDocsFromBlocks({ sprintId, workspacePath, outputTex
 
   if (written.length === 0) return { written: [], reason: 'NO_ALLOWED_DOC_BLOCKS' };
   return { written, reason: 'OK' };
+}
+
+async function collectTextFilesUnder(dir, exts = ['.vue', '.js', '.ts', '.jsx', '.tsx', '.css', '.html']) {
+  const files = [];
+  async function walk(current) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const abs = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
+        await walk(abs);
+      } else if (exts.includes(path.extname(entry.name).toLowerCase())) {
+        files.push(abs);
+      }
+    }
+  }
+  await walk(dir);
+  return files;
+}
+
+function extractLayoutKeywords(layoutText) {
+  const lines = String(layoutText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const out = [];
+  for (const line of lines) {
+    const cleaned = line.replace(/^[-*#\d\.\s:：]+/, '').trim();
+    if (!cleaned || cleaned.length < 2 || cleaned.length > 24) continue;
+    out.push(cleaned.toLowerCase());
+  }
+  return [...new Set(out)].slice(0, 24);
+}
+
+async function evaluateUiLayoutAlignment({ workspacePath, codePath }) {
+  const uiLayoutPath = path.join(workspacePath, 'product', 'ui-layout.md');
+  let layoutText = '';
+  try {
+    layoutText = await fs.readFile(uiLayoutPath, 'utf-8');
+  } catch {
+    return { status: 'skipped', reason: 'ui-layout.md not found' };
+  }
+
+  const srcDir = path.join(codePath, 'src');
+  const codeFiles = await collectTextFilesUnder(srcDir);
+  if (!codeFiles.length) {
+    return { status: 'failed', reason: 'frontend source files not found under src/' };
+  }
+
+  let corpus = '';
+  for (const f of codeFiles) {
+    try {
+      corpus += '\n' + (await fs.readFile(f, 'utf-8')).toLowerCase();
+    } catch {}
+  }
+
+  const keywords = extractLayoutKeywords(layoutText);
+  if (!keywords.length) {
+    return { status: 'skipped', reason: 'no usable layout keywords extracted' };
+  }
+  const matched = keywords.filter((kw) => corpus.includes(kw));
+  const missing = keywords.filter((kw) => !matched.includes(kw)).slice(0, 8);
+  const ratio = matched.length / keywords.length;
+  return {
+    status: ratio >= 0.55 ? 'passed' : 'failed',
+    ratio,
+    matched: matched.length,
+    total: keywords.length,
+    missing
+  };
+}
+
+function formatUiLayoutCheckReport(result) {
+  if (!result || result.status === 'skipped') {
+    return `UI_LAYOUT_CHECK: SKIPPED (${result?.reason || 'unknown'})`;
+  }
+  if (typeof result.matched !== 'number' || typeof result.total !== 'number') {
+    return `UI_LAYOUT_CHECK: ${String(result.status || 'failed').toUpperCase()} (${result.reason || 'validator returned incomplete metrics'})`;
+  }
+  const pct = Math.round((result.ratio || 0) * 100);
+  const line = `UI_LAYOUT_CHECK: ${result.status.toUpperCase()} (${result.matched}/${result.total}, ${pct}%)`;
+  if (!result.missing?.length) return line;
+  return `${line}\n缺失关键布局词: ${result.missing.join(', ')}`;
 }
 
 async function appendDeveloperTaskRun({
@@ -1240,6 +1335,114 @@ async function saveOutput(pipelineId, role, output) {
   return filePath;
 }
 
+function extractEvolverArtifacts(outputText) {
+  const text = String(outputText || '').trim();
+  if (!text) {
+    return {
+      evolverReport: '（无内容）',
+      techDebt: '（未识别到技术债务内容）'
+    };
+  }
+
+  const normalized = text.replace(/\r\n/g, '\n');
+  const headingMatches = [...normalized.matchAll(/^#{1,6}\s+(.+)$/gm)];
+  let techDebt = '';
+
+  for (let i = 0; i < headingMatches.length; i++) {
+    const title = String(headingMatches[i][1] || '').trim();
+    if (!/(技术债务|债务|风险)/i.test(title)) continue;
+    const start = headingMatches[i].index ?? 0;
+    const end = i + 1 < headingMatches.length ? (headingMatches[i + 1].index ?? normalized.length) : normalized.length;
+    techDebt = normalized.slice(start, end).trim();
+    break;
+  }
+
+  if (!techDebt) {
+    const split = normalized.split(/\n#{1,6}\s+/);
+    techDebt = split[0]?.trim() || normalized;
+  }
+
+  return {
+    evolverReport: normalized,
+    techDebt: techDebt.trim() || '（未识别到技术债务内容）'
+  };
+}
+
+export async function persistEvolverArtifacts({ sprintId, workspacePath, outputText }) {
+  const outputDir = path.join(workspacePath, 'output');
+  await fs.mkdir(outputDir, { recursive: true });
+
+  const { evolverReport, techDebt } = extractEvolverArtifacts(outputText);
+  const fileDefs = [
+    { name: 'evolver-report.md', path: 'output/evolver-report.md', content: evolverReport },
+    { name: 'tech-debt.md', path: 'output/tech-debt.md', content: techDebt }
+  ];
+
+  const persisted = [];
+  for (const file of fileDefs) {
+    const abs = path.join(workspacePath, file.path);
+    await fs.mkdir(path.dirname(abs), { recursive: true });
+    await fs.writeFile(abs, file.content, 'utf-8');
+    await fs.stat(abs);
+    persisted.push({ name: file.name, path: file.path, abs });
+    console.log(`   📄 已写入: workspace/${sprintId}/${file.path}`);
+  }
+  return persisted;
+}
+
+export async function collectExecutionOutputFiles({ pipelineId, role, workspaceRoot = WORKSPACE, explicitFiles = [] }) {
+  const outputFiles = [];
+  const seen = new Set();
+
+  for (const file of explicitFiles) {
+    const relPath = String(file?.path || '').trim();
+    if (!relPath || seen.has(relPath)) continue;
+    const abs = path.join(workspaceRoot, pipelineId, relPath);
+    try {
+      const stat = await fs.stat(abs);
+      if (!stat.isFile()) continue;
+      seen.add(relPath);
+      outputFiles.push({
+        name: file.name || path.basename(relPath),
+        path: relPath
+      });
+    } catch {
+      // ignore missing explicit file
+    }
+  }
+
+  const roleDir = path.join(workspaceRoot, pipelineId, role);
+  try {
+    const files = await fs.readdir(roleDir);
+    for (const file of files) {
+      if (file.startsWith('.')) continue;
+      const filePath = path.join(roleDir, file);
+      const stat = await fs.stat(filePath);
+      const relPath = `${role}/${file}`;
+      if (stat.isFile() && !seen.has(relPath)) {
+        seen.add(relPath);
+        outputFiles.push({ name: file, path: relPath });
+      }
+    }
+  } catch {}
+
+  const outputDir = path.join(workspaceRoot, pipelineId, 'output');
+  try {
+    const files = await fs.readdir(outputDir);
+    for (const file of files) {
+      const filePath = path.join(outputDir, file);
+      const stat = await fs.stat(filePath);
+      const relPath = `output/${file}`;
+      if (stat.isFile() && !seen.has(relPath)) {
+        seen.add(relPath);
+        outputFiles.push({ name: file, path: relPath });
+      }
+    }
+  } catch {}
+
+  return outputFiles;
+}
+
 /**
  * 保存角色执行记录到 execution-log 目录
  */
@@ -1276,42 +1479,11 @@ async function saveExecutionLog(pipelineId, role, context) {
     ? `${Math.floor(durationSeconds / 60)}分${durationSeconds % 60}秒`
     : `${durationSeconds}秒`;
   
-  // 扫描产出文件
-  const roleDir = path.join(WORKSPACE, pipelineId, role);
-  let outputFiles = [];
-  try {
-    const files = await fs.readdir(roleDir);
-    for (const file of files) {
-      const filePath = path.join(roleDir, file);
-      const stat = await fs.stat(filePath);
-      if (stat.isFile() && !file.startsWith('.')) {
-        outputFiles.push({
-          name: file,
-          path: `${role}/${file}`
-        });
-      }
-    }
-  } catch (e) {
-    // 目录不存在
-  }
-  
-  // 同时扫描 output 目录
-  const outputDir = path.join(WORKSPACE, pipelineId, 'output');
-  try {
-    const files = await fs.readdir(outputDir);
-    for (const file of files) {
-      const filePath = path.join(outputDir, file);
-      const stat = await fs.stat(filePath);
-      if (stat.isFile()) {
-        outputFiles.push({
-          name: file,
-          path: `output/${file}`
-        });
-      }
-    }
-  } catch (e) {
-    // 目录不存在
-  }
+  const outputFiles = await collectExecutionOutputFiles({
+    pipelineId,
+    role,
+    explicitFiles: context.outputFiles || []
+  });
   
   const logData = {
     role,
@@ -1914,8 +2086,8 @@ function getStepGuidance(role, stepIndex) {
       '## 步骤 2/2: 改进清单\n列出可执行的设计改进项。追加到 output/design-review.md'
     ],
     evolver: [
-      '## 步骤 1/2: 技术债务与风险\n扫描代码与架构债务。输出到 output/evolver-report.md',
-      '## 步骤 2/2: 优化路线图\n给出可落地的重构与演进建议。追加到 output/evolver-report.md'
+      '## 步骤 1/2: 技术债务与风险\n先判断当前代码是否存在明确、已发生的技术债务与风险。若没有，请明确写出“暂无需要立即处理的技术债务，暂不建议立即重构”。不要为了显得专业而强行编造债务。完整分析写入 output/evolver-report.md，债务结论需可被提取为 tech-debt.md。',
+      '## 步骤 2/2: 优化路线图\n只在有明确触发条件时给出演进建议。对于刚生成且规模较小的代码，优先写“后续扩展时再评估”的条件化建议，而不是直接要求重构。追加到 output/evolver-report.md。'
     ]
   };
   
@@ -2409,15 +2581,20 @@ ${projectDir}/
 3. 读取 proposal.md（需求背景）:
    ${proposalPathLine}
 
-4. 检查现有代码（如有）:
+4. 读取产品界面与功能约束（如存在）:
+   - ${wsPath}/product/ui-layout.md（界面布局与交互）
+   - ${wsPath}/product/functional-requirements.md（功能优先级与验收点）
+
+5. 检查现有代码（如有）:
    - ${projectDir}/
 
-5. 确认本次实现范围，列出需要实现的任务列表
+6. 确认本次实现范围，列出需要实现的任务列表
 
 ## ⚠️ 强制要求
 - 直接确认范围并列出任务，不要询问是否可以继续
 - 如果代码已存在，分析完成度并列出剩余任务
 - 不要等待用户确认，直接输出任务列表并准备执行
+- 若涉及前端页面，实现必须对齐 ui-layout.md；如存在偏差，需在进度输出中明确“偏差原因与处理方案”
 
 ## 输出
 确认范围后直接输出任务列表到控制台，然后开始执行 Step 2
@@ -2439,13 +2616,15 @@ ${rawInput}
 
 ## 你的任务
 1. 首先读取 tasks.md 文件
-2. 执行**第 1～10 条**可执行任务；若总数不足 10 条则全部做完后进入步骤 3
+2. 读取 ${wsPath}/product/ui-layout.md（如存在）和 ${wsPath}/product/functional-requirements.md（如存在）
+3. 执行**第 1～10 条**可执行任务；若总数不足 10 条则全部做完后进入步骤 3
 3. 每完成一条就把代码写入: ${projectDir}/（使用下方“文件落盘协议”输出文件块）
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须输出文件块（见下方协议），否则不会生成任何代码文件**
 - 进度输出与 tasks.md 中的标记一致即可，例如 \`[任务 第2条] 完成: …\` 或 \`[任务1.2] 完成: …\`
 - 直接执行任务，不要询问是否可以继续
+- 所有 UI 相关改动必须对齐 ui-layout.md；若未找到该文件，需在进度中标注“按默认布局实现”
 
 ${fileWriteProtocol}
 
@@ -2468,11 +2647,12 @@ ${rawInput}
 - 代码目录: ${projectDir}
 
 ## 你的任务
-继续执行 tasks.md 中**第 11～20 条**可执行任务。
+继续执行 tasks.md 中**第 11～20 条**可执行任务，并持续对齐 ${wsPath}/product/ui-layout.md（如存在）。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须输出文件块（见下方协议），否则不会生成任何代码文件**
 - 代码保存路径: ${projectDir}/
+- UI 相关任务必须满足 ui-layout.md；如无法完全满足，输出偏差说明
 
 ${fileWriteProtocol}
 
@@ -2495,11 +2675,12 @@ ${rawInput}
 - 代码目录: ${projectDir}
 
 ## 你的任务
-继续执行 tasks.md 中**第 21～30 条**可执行任务。
+继续执行 tasks.md 中**第 21～30 条**可执行任务，并持续对齐 ${wsPath}/product/ui-layout.md（如存在）。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须输出文件块（见下方协议），否则不会生成任何代码文件**
 - 代码保存路径: ${projectDir}/
+- UI 相关任务必须满足 ui-layout.md；如无法完全满足，输出偏差说明
 
 ${fileWriteProtocol}
 
@@ -2522,11 +2703,12 @@ ${rawInput}
 - 代码目录: ${projectDir}
 
 ## 你的任务
-继续执行 tasks.md 中**第 31～40 条**可执行任务。
+继续执行 tasks.md 中**第 31～40 条**可执行任务，并持续对齐 ${wsPath}/product/ui-layout.md（如存在）。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须输出文件块（见下方协议），否则不会生成任何代码文件**
 - 代码保存路径: ${projectDir}/
+- UI 相关任务必须满足 ui-layout.md；如无法完全满足，输出偏差说明
 
 ${fileWriteProtocol}
 
@@ -2549,11 +2731,12 @@ ${rawInput}
 - 代码目录: ${projectDir}
 
 ## 你的任务
-继续执行 tasks.md 中**第 41 条及之后**的全部剩余任务，直到没有未完成任务。
+继续执行 tasks.md 中**第 41 条及之后**的全部剩余任务，直到没有未完成任务，并持续对齐 ${wsPath}/product/ui-layout.md（如存在）。
 
 ### ⚠️ 强制要求（必须遵守）
 - **必须输出文件块（见下方协议），否则不会生成任何代码文件**
 - 代码保存路径: ${projectDir}/
+- UI 相关任务必须满足 ui-layout.md；如无法完全满足，输出偏差说明
 
 ${fileWriteProtocol}
 
@@ -2597,11 +2780,98 @@ ${fileWriteProtocol}
   return stepPrompts[1];
 }
 
+const TESTER_INJECT_CHARS_PER_FILE = 8192;
+
+/** 第 4 步：读入前几步产物片段注入 prompt，便于汇总与 TC-ID 对齐 */
+async function readTesterPriorArtifactsForPrompt(workspacePath) {
+  const files = [
+    ['tester/test-cases.md', path.join(workspacePath, 'tester', 'test-cases.md')],
+    ['tester/test-results.md', path.join(workspacePath, 'tester', 'test-results.md')],
+    ['tester/security-scan.md', path.join(workspacePath, 'tester', 'security-scan.md')]
+  ];
+  const parts = [
+    '## 本轮须引用的前序产出（已截断；请在报告中逐条对齐 TC-ID / FIND-ID，勿编造未出现的编号）',
+    ''
+  ];
+  for (const [label, abs] of files) {
+    try {
+      const raw = await fs.readFile(abs, 'utf-8');
+      const snip =
+        raw.length > TESTER_INJECT_CHARS_PER_FILE
+          ? `${raw.slice(0, TESTER_INJECT_CHARS_PER_FILE)}\n\n…（省略，原文件共 ${raw.length} 字符）\n`
+          : raw;
+      parts.push(`### ${label}\n\n${snip}\n`);
+    } catch (_e) {
+      parts.push(`### ${label}\n\n（文件不存在或无法读取）\n`);
+    }
+  }
+  return parts.join('\n');
+}
+
+/** 解析第 4 步模型输出中的功能报告与安全报告区块 */
+function splitTesterStep4Output(markdown) {
+  const text = String(markdown || '');
+  const startT = '<<<DEVFORGE_TEST_REPORT>>>';
+  const endT = '<<<END_TEST_REPORT>>>';
+  const startS = '<<<DEVFORGE_SECURITY_REPORT>>>';
+  const endS = '<<<END_SECURITY_REPORT>>>';
+  const iT = text.indexOf(startT);
+  const iTe = text.indexOf(endT);
+  const iS = text.indexOf(startS);
+  const iSe = text.indexOf(endS);
+
+  let testReport = text.trim();
+  let securityReport = '';
+
+  if (iT !== -1 && iTe !== -1 && iTe > iT) {
+    testReport = text.slice(iT + startT.length, iTe).trim();
+  }
+  if (iS !== -1 && iSe !== -1 && iSe > iS) {
+    securityReport = text.slice(iS + startS.length, iSe).trim();
+  }
+
+  const hasSecurityBlock = iS !== -1 && iSe !== -1 && iSe > iS;
+  return { testReport, securityReport, hasSecurityBlock };
+}
+
+/** 未解析出独立安全区块时，用 security-scan.md + 测试摘要拼装安全报告 */
+async function buildFallbackSecurityReport(workspacePath, testReportText) {
+  const scanPath = path.join(workspacePath, 'tester', 'security-scan.md');
+  let scan = '';
+  try {
+    scan = await fs.readFile(scanPath, 'utf-8');
+  } catch (_e) {
+    /* ignore */
+  }
+  const tr = String(testReportText || '');
+  const excerpt = tr.length > 2500 ? `${tr.slice(0, 2500)}…` : tr;
+  return `# 安全报告
+
+> 说明：本轮模型输出未包含 \`<<<DEVFORGE_SECURITY_REPORT>>>\` … \`<<<END_SECURITY_REPORT>>>\` 独立区块；本文件由 \`tester/security-scan.md\` 与功能测试报告摘录自动兜底拼装。
+
+## 功能测试摘要（摘录）
+
+${excerpt || '（无）'}
+
+## 安全扫描记录（tester/security-scan.md）
+
+${scan || '（无 security-scan.md）'}
+`;
+}
+
 /**
  * 生成 Tester Agent 的提示词
  */
 function generateTesterPrompt(context) {
-  const { rawInput, workspacePath, projectPath, projectId, stepIndex, testEnvironmentUrl } = context;
+  const {
+    rawInput,
+    workspacePath,
+    projectPath,
+    projectId,
+    stepIndex,
+    testEnvironmentUrl,
+    priorArtifactsBlock
+  } = context;
   const hasEnvironment = !!testEnvironmentUrl;
   const resolvedProjectRoot = projectPath || path.join(PROJECTS, projectId || '');
   const codeDir = path.join(resolvedProjectRoot, 'src');
@@ -2623,11 +2893,12 @@ ${codeDir}
 2. 对照 \`${codeDir}\` 下**已存在的**实现文件（路径与职责），说明每条验收点是否**已有对应实现线索**；若明显缺失或偏离，记入「一致性缺口」小节。
 3. 再设计可执行的测试用例覆盖上述验收点。
 
-## 输出要求
+## 输出要求（必须满足，否则视为未完成）
 1. **需求与实现一致性摘要**（验收点 ↔ 代码位置/模块）
-2. **一致性缺口**（若有）
-3. 测试用例列表
-4. 测试覆盖范围与测试数据准备
+2. **一致性缺口**（若无则写「无」）
+3. **主用例表（Markdown 表格，必填列）**：\`TC-ID\` | \`标题\` | \`前置条件\` | \`步骤(编号列表)\` | \`预期结果\` | \`优先级(P0–P3)\` | \`追溯(用户故事/验收点)\`
+4. 用例数量：至少 **8** 条可执行用例；若 PRD 验收点少于 8，则一验收点多条正负向用例，并在表中注明追溯。
+5. **测试数据与范围**：列出边界/异常类用例至少 2 条。
 
 保存到: ${workspacePath}/tester/test-cases.md
 `,
@@ -2664,11 +2935,11 @@ ${hasEnvironment
 ## 环境状态
 ${hasEnvironment ? '✅ 测试环境已提供: ' + testEnvironmentUrl : '⚠️ 无测试环境，执行静态代码审查'}
 
-## 输出要求
-${hasEnvironment 
-  ? '1. 测试执行结果\n2. 通过/失败用例列表\n3. 失败用例的详细描述\n4. 测试截图路径'
-  : '1. 代码审查发现的问题列表\n2. 问题严重程度（高/中/低）\n3. 具体代码位置和修复建议'
-}
+## 输出要求（必须满足）
+1. **结果矩阵（Markdown 表格，必填列）**：\`TC-ID\` | \`结果\`（仅允许 Pass / Fail / Blocked / Skipped）| \`证据\`（截图路径、控制台日志片段、或 \`${codeDir}\` 下具体文件:行号）| \`备注\`
+2. **TC-ID 必须与** \`${workspacePath}/tester/test-cases.md\` **中已出现的 TC-ID 一致**；若某 TC 未执行，结果列填 Skipped 并说明原因。
+3. 每个 **Fail** 须另起小节：根因、复现步骤、严重程度（Critical/High/Medium/Low）。
+${hasEnvironment ? '4. 附测试截图路径或浏览器控制台关键错误摘要。' : '4. 静态审查每条发现须对应代码位置与修复建议。'}
 
 保存到: ${workspacePath}/tester/test-results.md
 `,
@@ -2703,14 +2974,15 @@ ${hasEnvironment
 ## 环境状态
 ${hasEnvironment ? '✅ 测试环境已提供: ' + testEnvironmentUrl : '⚠️ 无测试环境，执行静态安全审查'}
 
-## 输出要求
-1. 安全检查项
-2. 发现的安全问题
-3. 风险等级评估
+## 输出要求（必须满足）
+1. **范围**：测试对象（URL 或代码目录）、信任边界、敏感数据流（若有）。
+2. **方法**：列出执行的检查类别（认证、授权、输入校验、XSS、CSRF、注入、敏感信息泄露、依赖风险等）。
+3. **发现列表**：Markdown 表格，列 \`FIND-ID\` | \`描述\` | \`严重度\` | \`位置(URL 或 文件:行)\` | \`复现要点\` | \`修复建议\` | \`残余风险\`；若无发现，表格仅一行且描述写「本次检查未发现可利用漏洞」，并附完整检查项清单。
+4. **风险汇总**：按严重度统计条数。
 
 保存到: ${workspacePath}/tester/security-scan.md
 `,
-    `# 角色：测试工程师 - 步骤 4/4：生成测试报告
+    `# 角色：测试工程师 - 步骤 4/4：生成测试报告与安全报告
 
 ## 用户需求
 ${rawInput}
@@ -2723,39 +2995,45 @@ ${hasEnvironment ? '✅ 已提供: ' + testEnvironmentUrl : '⚠️ 未提供（
 
 ## 你的任务
 ${hasEnvironment 
-  ? `执行最终回归验证，然后汇总所有测试结果生成最终测试报告。
-
-### 执行步骤
-1. 使用浏览器工具对 ${testEnvironmentUrl} 执行最终回归测试
-2. 验证之前发现的问题是否已修复
-3. 收集健康评分、截图证据、Bug 列表
-4. 整合步骤 1-3 的测试用例、测试结果、安全扫描结果
-5. 生成标准化的测试报告`
-  : `汇总步骤 1-3 的静态审查结果，生成最终测试报告。`
+  ? `执行最终回归验证，然后汇总所有测试结果；须严格依据下方「前序产出」中的 TC-ID / FIND-ID 与结果矩阵撰写，不得编造未出现的编号。`
+  : `汇总步骤 1-3 的静态审查结果；须严格依据下方「前序产出」中的 TC-ID / FIND-ID 撰写。`
 }
 
-## 输出要求
-生成测试报告，包含：
-1. 测试摘要（总用例数、通过数、失败数、跳过数）
-2. Bug 列表（Bug ID、标题、严重程度、复现步骤）
-3. 性能数据（LCP、FID、CLS、加载时间）
-4. 安全扫描结果
-5. 环境测试状态（运行时测试/静态审查）
-6. gstack 健康评分和 ship-readiness 总结（如有）
+## 功能测试报告须包含
+1. 执行概况与环境说明（运行时 / 静态）
+2. **逐 TC 结论表**：列 \`TC-ID\` | \`结果\` | \`证据/说明\`（与 test-results 一致）
+3. 摘要行：总用例数、Pass/Fail/Blocked/Skipped 计数（数字须与上表一致）
+4. Bug / 缺陷列表（若有）：\`BUG-ID\`、标题、严重度、复现、关联 TC-ID
+5. 性能或体验数据（若无实测则写「未采集」及原因）
 
-**摘要口径（必读）**：无浏览器/无真实执行环境时，「失败」指**需求与实现对比下功能未实现或不可验证**，不是自动化脚本执行报错。勿与「全部 E2E 绿灯」混淆；若仅为静态审查，须在摘要中明确标注。
+## 安全报告须包含（与功能报告分开撰写，禁止仅复制统计数字）
+1. 范围、威胁模型一句话、本次方法
+2. **FIND 表摘要**（与 security-scan 对齐）及残余风险、修复优先级
+3. 与功能缺陷的交叉引用（若有）
 
-保存到: ${workspacePath}/output/test-report.md
-和: ${workspacePath}/output/security-report.md
+**摘要口径（必读）**：无浏览器/无真实执行环境时，「失败」指**需求与实现对比下功能未实现或不可验证**，不是自动化脚本执行报错；须在功能报告中明确标注。
+
+${typeof priorArtifactsBlock === 'string' && priorArtifactsBlock.trim() ? priorArtifactsBlock.trim() + '\n\n' : ''}## 输出格式（强制，系统据此拆分为两个文件）
+在同一段回复中 **按顺序** 输出下列两个区块（分隔行原样保留，勿改标记）：
+
+<<<DEVFORGE_TEST_REPORT>>>
+（此处为「功能测试报告」完整 Markdown：须含逐 TC 表与摘要数字一致）
+<<<END_TEST_REPORT>>>
+
+<<<DEVFORGE_SECURITY_REPORT>>>
+（此处为「安全评估报告」完整 Markdown：须含 FIND 与建议，不得仅为一句话）
+<<<END_SECURITY_REPORT>>>
+
+除上述两个区块外可有一行简短前言，但不要在其外写大段正文以免解析失败。
 `
   ];
 
-  // 如果指定了 stepIndex，返回对应步骤的 prompt
-  if (stepIndex !== null && stepIndex >= 0 && stepIndex < stepPrompts.length) {
-    return stepPrompts[stepIndex];
+  const si = stepIndex;
+  if (typeof si === 'number' && si >= 0 && si < stepPrompts.length) {
+    return stepPrompts[si];
   }
 
-  // 默认返回完整 prompt（第4步）
+  // 未传 stepIndex 时仍默认第 4 步（兼容旧调用）
   return stepPrompts[3];
 }
 
@@ -3606,7 +3884,15 @@ async function runIteration(
         stepIndex: stepIdx
       });
       break;
-    case 'tester':
+    case 'tester': {
+      let priorArtifactsBlock = '';
+      if (stepIdx === 3) {
+        try {
+          priorArtifactsBlock = await readTesterPriorArtifactsForPrompt(workspacePath);
+        } catch (e) {
+          console.warn(`   ⚠️ 读取测试前序产出失败: ${e.message}`);
+        }
+      }
       prompt = generateTesterPrompt({
         sprintId,
         projectId: context.projectId,
@@ -3617,9 +3903,12 @@ async function runIteration(
         openspec: context.openspec,
         developerOutput: context.developerOutput,
         codePaths: context.codePaths,
-        testEnvironmentUrl: context.testEnvironmentUrl
+        testEnvironmentUrl: context.testEnvironmentUrl,
+        stepIndex: stepIdx,
+        priorArtifactsBlock
       });
       break;
+    }
     case 'ops':
       prompt = generateOpsPrompt({
         sprintId,
@@ -3852,6 +4141,22 @@ async function runIteration(
       }
     }
 
+    if (role === 'developer' && stepIdx !== null && stepIdx >= 1 && stepIdx <= 5) {
+      try {
+        const check = await evaluateUiLayoutAlignment({
+          workspacePath,
+          codePath: context.codePath
+        });
+        const report = formatUiLayoutCheckReport(check);
+        const reportPath = path.join(workspacePath, 'output', 'ui-layout-check.md');
+        await fs.mkdir(path.dirname(reportPath), { recursive: true });
+        await fs.writeFile(reportPath, `# UI Layout Alignment Check\n\n${report}\n`, 'utf-8');
+        output = `${output}\n\n---\n\n${report}`;
+      } catch (e) {
+        output = `${output}\n\n---\n\nUI_LAYOUT_CHECK: FAILED (validator error: ${e.message})`;
+      }
+    }
+
     // 架构师步骤 1～4：将本步正文落盘到 workspace/<sprintId>/architect/*.md（与 Dashboard 文件预览、generateArchitectPrompt 读盘路径一致）
     if (role === 'architect' && stepIdx !== null && stepIdx >= 0 && stepIdx <= 3) {
       const archStepFiles = [
@@ -3896,12 +4201,18 @@ async function runIteration(
             `   📄 已写入: workspace/${sprintId}/tester/security-scan.md 与 security-report.md`
           );
         } else if (stepIdx === 3) {
-          await fs.writeFile(path.join(outputDir, 'test-report.md'), output, 'utf-8');
-          await fs.writeFile(path.join(testerDir, 'test-report.md'), output, 'utf-8');
-          await fs.writeFile(path.join(outputDir, 'security-report.md'), output, 'utf-8');
-          await fs.writeFile(path.join(testerDir, 'security-report.md'), output, 'utf-8');
+          const { testReport, securityReport, hasSecurityBlock } = splitTesterStep4Output(output);
+          let securityBody = securityReport;
+          if (!hasSecurityBlock || !securityBody) {
+            securityBody = await buildFallbackSecurityReport(workspacePath, testReport);
+            console.log('   📄 安全报告：未识别独立 SECURITY 区块，已使用 security-scan 兜底拼装');
+          }
+          await fs.writeFile(path.join(outputDir, 'test-report.md'), testReport, 'utf-8');
+          await fs.writeFile(path.join(testerDir, 'test-report.md'), testReport, 'utf-8');
+          await fs.writeFile(path.join(outputDir, 'security-report.md'), securityBody, 'utf-8');
+          await fs.writeFile(path.join(testerDir, 'security-report.md'), securityBody, 'utf-8');
           console.log(
-            `   📄 已写入: workspace/${sprintId}/output/test-report.md、tester/test-report.md 及 security-report（output + tester）`
+            `   📄 已写入: workspace/${sprintId}/output/test-report.md、tester/test-report.md 及 security-report（output + tester，拆分=${hasSecurityBlock && !!securityReport}）`
           );
         }
       } catch (e) {
@@ -3916,6 +4227,8 @@ async function runIteration(
     
     // 保存输出（多步骤角色：链式追加；显式 stepIndex 重跑时仅覆盖对应节）
     const stepCount = roleStepCount;
+    let persistedOutputFiles = [];
+    let finalOutputForArtifacts = output;
     if (stepCount > 1 && stepIdx !== null) {
       const isLastStep = stepIdx + 1 >= stepCount;
       const stepStatus = isLastStep ? 'completed' : 'running';
@@ -3929,24 +4242,35 @@ async function runIteration(
           stepCount,
           replaceStepOutput
         );
+        finalOutputForArtifacts = combined;
         await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
           output: combined,
           status: stepStatus
         });
       } catch (e) {
+        finalOutputForArtifacts = output;
         await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
           output,
           status: stepStatus
         });
       }
     } else {
+      finalOutputForArtifacts = output;
       await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
         output,
         status: 'completed'
       });
     }
+
+    if (role === 'evolver') {
+      persistedOutputFiles = await persistEvolverArtifacts({
+        sprintId,
+        workspacePath,
+        outputText: finalOutputForArtifacts
+      });
+    }
     
-    console.log(`   ✅ 输出已保存`);
+     console.log(`   ✅ 输出已保存`);
     
     // 检查是否需要继续执行后续步骤
     const totalSteps = roleStepCount;
@@ -4003,10 +4327,11 @@ async function runIteration(
       steps: allSteps,
       rawInput: context.rawInput,
       testEnvironmentUrl: context.testEnvironmentUrl,
-      output: output
+      output: output,
+      outputFiles: persistedOutputFiles
     });
     
-    return { success: true, output };
+    return { success: true, output, outputFiles: persistedOutputFiles };
   } catch (error) {
     console.error(`   ❌ 执行失败:`, error.message);
     await axios.put(`${API_BASE}/api/sprints/${sprintId}/iterations/${roleIndex}/output`, {
@@ -4077,4 +4402,13 @@ async function main() {
   }
 }
 
-main();
+export {
+  extractEvolverArtifacts,
+  mergeMultiStepOutput,
+  saveExecutionLog,
+  saveOutput
+};
+
+if (IS_CLI_ENTRY) {
+  main();
+}

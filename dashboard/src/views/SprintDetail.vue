@@ -128,6 +128,14 @@
           </div>
         </div>
         <div class="stage-actions">
+          <el-button
+            type="warning"
+            plain
+            :disabled="isExecuting"
+            @click="openRegenerateDialog"
+          >
+            <el-icon><Edit /></el-icon> 提意见并重新生成
+          </el-button>
           <el-button 
             v-if="!isDeveloperStageSelected" 
             type="primary" 
@@ -145,6 +153,14 @@
           </el-button>
         </div>
       </div>
+
+      <el-alert
+        title="不满意当前结果时，点击“提意见并重新生成”，系统会把意见作为本阶段输入并自动重跑。"
+        type="info"
+        :closable="false"
+        show-icon
+        class="regenerate-hint"
+      />
 
       <!-- 用户输入 -->
       <div v-if="currentIterationNeedsInput" class="user-input-section">
@@ -193,6 +209,15 @@
         <h4 class="detail-section-title">
           <el-icon><Connection /></el-icon>
           Developer Task Console（手动逐条 + Diff）
+          <el-tag
+            v-if="uiLayoutCheckBadge"
+            size="small"
+            :type="uiLayoutCheckBadge.type"
+            effect="plain"
+            class="ui-layout-check-tag"
+          >
+            布局对齐：{{ uiLayoutCheckBadge.text }}
+          </el-tag>
         </h4>
 
         <div class="developer-console-top">
@@ -281,6 +306,66 @@
         </div>
       </div>
 
+      <div v-if="isDeveloperStageSelected" class="detail-section preview-runtime-section">
+        <h4 class="detail-section-title">
+          <el-icon><Connection /></el-icon>
+          项目预览运行
+        </h4>
+        <div class="preview-runtime-row">
+          <div class="preview-runtime-item">
+            <span class="preview-runtime-label">前端预览</span>
+            <el-tag size="small" :type="previewStatusText === '运行中' ? 'success' : previewStatusText === '启动失败' ? 'danger' : 'info'">
+              {{ previewStatusText }}
+            </el-tag>
+            <div class="preview-runtime-actions">
+              <el-button size="small" type="primary" :loading="previewLoading" :disabled="!canStartPreview" @click="startPreviewRun">启动</el-button>
+              <el-button size="small" :disabled="!canOpenPreview" @click="openPreviewRun">打开</el-button>
+              <el-button size="small" :loading="previewLoading" :disabled="!canStopPreview" @click="stopPreviewRun">停止</el-button>
+            </div>
+          </div>
+
+          <div class="preview-runtime-item">
+            <span class="preview-runtime-label">后端预览</span>
+            <el-tag size="small" :type="backendPreviewStatusText === '运行中' ? 'success' : backendPreviewStatusText === '启动失败' ? 'danger' : 'info'">
+              {{ backendPreviewStatusText }}
+            </el-tag>
+            <div class="preview-runtime-actions">
+              <el-button size="small" type="primary" :loading="previewLoading" :disabled="!canStartBackendPreview" @click="startBackendPreviewRun">启动</el-button>
+              <el-button size="small" :loading="previewLoading" :disabled="!canStopBackendPreview" @click="stopBackendPreviewRun">停止</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isDeveloperStageSelected" class="detail-section api-console-section">
+        <h4 class="detail-section-title">
+          <el-icon><Connection /></el-icon>
+          后端 API 控制台
+        </h4>
+        <div class="api-console-form">
+          <el-select v-model="apiConsoleForm.method" style="width: 120px">
+            <el-option label="GET" value="GET" />
+            <el-option label="POST" value="POST" />
+            <el-option label="PUT" value="PUT" />
+            <el-option label="PATCH" value="PATCH" />
+            <el-option label="DELETE" value="DELETE" />
+          </el-select>
+          <el-input v-model="apiConsoleForm.path" placeholder="/api/health or /health" />
+        </div>
+        <el-input v-model="apiConsoleForm.headers" type="textarea" :rows="3" placeholder='Headers JSON, e.g. {"Content-Type":"application/json"}' />
+        <el-input v-model="apiConsoleForm.body" type="textarea" :rows="5" placeholder='Request body (optional)' />
+        <div class="api-console-actions">
+          <el-button type="primary" :loading="apiConsoleLoading" @click="sendBackendApiRequest">发送请求</el-button>
+        </div>
+        <div v-if="apiConsoleResponse" class="api-console-response">
+          <p>
+            <strong>Status:</strong> {{ apiConsoleResponse.status }} {{ apiConsoleResponse.statusText }}
+            <span style="margin-left: 12px;"><strong>耗时:</strong> {{ apiConsoleResponse.durationMs }}ms</span>
+          </p>
+          <pre>{{ apiConsoleResponse.body }}</pre>
+        </div>
+      </div>
+
       <div v-if="selectedStageTaskMetrics.total > 0" class="detail-section">
         <h4 class="detail-section-title">
           <el-icon><CircleCheckFilled /></el-icon>
@@ -354,14 +439,14 @@
       </div>
 
       <!-- 输出文件列表（预期路径 + 固定说明） -->
-      <div v-if="currentStage?.outputFiles?.length > 0" class="detail-section">
+      <div v-if="currentStageOutputFiles?.length > 0" class="detail-section">
         <h4 class="detail-section-title">
           <el-icon><Folder /></el-icon>
           输出文件（预期）
         </h4>
         <ul class="output-files-list">
           <li
-            v-for="file in currentStage.outputFiles"
+            v-for="file in currentStageOutputFiles"
             :key="file.path"
             class="output-file-row"
             :class="{ 'file-exists': file.exists }"
@@ -430,6 +515,35 @@
 
     <!-- 预览弹窗 -->
     <el-dialog
+      v-model="regenerateDialogVisible"
+      title="提意见并重新生成"
+      width="640px"
+    >
+      <div class="regenerate-dialog-body">
+        <p class="regenerate-dialog-desc">
+          当前阶段：<strong>{{ currentStage?.name || '-' }}</strong>
+        </p>
+        <el-input
+          v-model="regenerateAdvice"
+          type="textarea"
+          :rows="6"
+          placeholder="请输入你希望调整的点，例如：保留现有接口，优化页面层级；补充单元测试覆盖异常场景。"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="regenerateDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="isExecuting"
+          :disabled="!regenerateAdvice.trim()"
+          @click="submitRegenerateAdvice"
+        >
+          提交意见并重跑
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
       v-model="previewVisible"
       :title="previewFile?.name || '文件预览'"
       width="80%"
@@ -481,6 +595,8 @@ const emit = defineEmits(['back'])
 
 const store = useProjectStore()
 const sprint = ref(null)
+/** GET /api/sprints/:id/files 返回的磁盘文件，用于标记 outputFiles.exists */
+const sprintDiskFiles = ref([])
 const activeStageIndex = ref(0)
 const selectedStage = ref(null)
 const userInput = ref('')
@@ -510,6 +626,18 @@ const selectedTaskRunFilePath = ref('')
 const developerTaskLoading = ref(false)
 const developerTaskExecuting = ref(false)
 const showCancelConfirm = ref(false)
+const previewMeta = ref(null)
+const previewStatus = ref({ status: 'stopped' })
+const apiConsoleLoading = ref(false)
+const regenerateDialogVisible = ref(false)
+const regenerateAdvice = ref('')
+const apiConsoleForm = ref({
+  method: 'GET',
+  path: '/health',
+  headers: '',
+  body: ''
+})
+const apiConsoleResponse = ref(null)
 
 const currentIterationNeedsInput = computed(() => {
   const stage = currentStage.value
@@ -761,9 +889,74 @@ const selectedStageOutput = computed(() => {
   return null
 })
 
+const uiLayoutCheckBadge = computed(() => {
+  if (!isDeveloperStageSelected.value) return null
+  const text = String(editableOutput.value || selectedStageOutput.value || '')
+  const m = text.match(/UI_LAYOUT_CHECK:\s*(PASSED|FAILED|SKIPPED)/i)
+  if (!m) return null
+  const status = m[1].toUpperCase()
+  if (status === 'PASSED') return { text: '通过', type: 'success' }
+  if (status === 'FAILED') return { text: '失败', type: 'danger' }
+  return { text: '跳过', type: 'info' }
+})
+
 // 当前阶段
 const currentStage = computed(() => {
   return pipelineStages.value[activeStageIndex.value] || null
+})
+
+function diskPathMatchesExpectedOutput(diskPaths, expectedPath) {
+  if (diskPaths.has(expectedPath)) return true
+  if (expectedPath === 'ops/Dockerfile') {
+    for (const p of diskPaths) {
+      if (/^ops\/dockerfile/i.test(p)) return true
+    }
+    return false
+  }
+  if (expectedPath === 'ops/ops-config.md') {
+    for (const p of diskPaths) {
+      if (p === 'ops/ops-config.md' || p === 'output/ops-config.md' || p === 'ops-config.md') return true
+    }
+    return false
+  }
+  if (expectedPath === 'ops/docker-compose.yml') {
+    for (const p of diskPaths) {
+      if (p === 'ops/docker-compose.yml' || /^ops\/docker-compose\./i.test(p)) return true
+    }
+    return false
+  }
+  const wf = 'ops/.github/workflows/'
+  if (expectedPath === wf || expectedPath === wf.slice(0, -1)) {
+    for (const p of diskPaths) {
+      if (p.startsWith('ops/.github/workflows/')) return true
+    }
+    return false
+  }
+  if (expectedPath === 'output/evolver-report.md') {
+    for (const p of diskPaths) {
+      if (p === 'output/evolver-report.md' || p === 'evolver/evolver-report.md' || p === 'evolver-report.md') return true
+    }
+    return false
+  }
+  if (expectedPath === 'output/tech-debt.md') {
+    for (const p of diskPaths) {
+      if (p === 'output/tech-debt.md' || p === 'evolver/tech-debt.md' || p === 'tech-debt.md') return true
+    }
+    return false
+  }
+  return false
+}
+
+const currentStageOutputFiles = computed(() => {
+  const stage = currentStage.value
+  if (!stage?.outputFiles?.length) return []
+  const diskPaths = new Set(
+    (sprintDiskFiles.value || []).filter((f) => f.exists !== false).map((f) => String(f.path || '').replace(/\\/g, '/'))
+  )
+  return stage.outputFiles.map((f) => ({
+    ...f,
+    exists: diskPathMatchesExpectedOutput(diskPaths, String(f.path || '').replace(/\\/g, '/'))
+  }))
 })
 
 // 当前阶段索引（含 failed，避免开发失败后「当前管道」误指第一步）
@@ -863,6 +1056,143 @@ const filteredStageTaskMetricItems = computed(() => {
   if (!showOnlyFailedTaskMetrics.value) return selectedStageTaskMetrics.value.items
   return selectedStageTaskMetrics.value.items.filter(item => !item.ok && !item.warn)
 })
+
+const canStartPreview = computed(() => {
+  return isDeveloperStageSelected.value && previewMeta.value?.hasFrontend && previewStatus.value?.targets?.frontend?.status !== 'running'
+})
+
+const canOpenPreview = computed(() => {
+  return isDeveloperStageSelected.value && previewStatus.value?.targets?.frontend?.status === 'running' && !!previewStatus.value?.targets?.frontend?.url
+})
+
+const canStopPreview = computed(() => {
+  return isDeveloperStageSelected.value && ['running', 'failed'].includes(previewStatus.value?.targets?.frontend?.status)
+})
+
+const canStartBackendPreview = computed(() => {
+  return isDeveloperStageSelected.value && previewMeta.value?.targets?.backend?.hasBackend && previewStatus.value?.targets?.backend?.status !== 'running'
+})
+
+const canStopBackendPreview = computed(() => {
+  return isDeveloperStageSelected.value && ['running', 'failed'].includes(previewStatus.value?.targets?.backend?.status)
+})
+
+const previewStatusText = computed(() => {
+  const status = previewStatus.value?.targets?.frontend?.status || 'stopped'
+  const map = {
+    stopped: '未启动',
+    running: '运行中',
+    failed: '启动失败'
+  }
+  return map[status] || status
+})
+
+const backendPreviewStatusText = computed(() => {
+  const status = previewStatus.value?.targets?.backend?.status || 'stopped'
+  const map = {
+    stopped: '未启动',
+    running: '运行中',
+    failed: '启动失败'
+  }
+  return map[status] || status
+})
+
+async function loadPreviewInfo() {
+  if (!props.sprintId || !isDeveloperStageSelected.value) return
+  previewLoading.value = true
+  try {
+    const [meta, status] = await Promise.all([
+      store.fetchSprintPreviewMeta(props.sprintId),
+      store.fetchSprintPreviewStatus(props.sprintId)
+    ])
+    previewMeta.value = meta
+    previewStatus.value = status || { status: 'stopped' }
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function startPreviewRun() {
+  previewLoading.value = true
+  try {
+    previewStatus.value = await store.startSprintPreview(props.sprintId, 'frontend')
+    previewMeta.value = previewMeta.value || (await store.fetchSprintPreviewMeta(props.sprintId))
+    ElMessage.success('前端预览已启动')
+  } catch (e) {
+    ElMessage.error(e.message || '启动预览失败')
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function openPreviewRun() {
+  const url = previewStatus.value?.targets?.frontend?.url || previewStatus.value?.url
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function stopPreviewRun() {
+  previewLoading.value = true
+  try {
+    previewStatus.value = await store.stopSprintPreview(props.sprintId, 'frontend')
+    ElMessage.success('前端预览已停止')
+  } catch (e) {
+    ElMessage.error(e.message || '停止预览失败')
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function startBackendPreviewRun() {
+  previewLoading.value = true
+  try {
+    previewStatus.value = await store.startSprintPreview(props.sprintId, 'backend')
+    previewMeta.value = previewMeta.value || (await store.fetchSprintPreviewMeta(props.sprintId))
+    ElMessage.success('后端预览已启动')
+  } catch (e) {
+    ElMessage.error(e.message || '启动后端预览失败')
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function stopBackendPreviewRun() {
+  previewLoading.value = true
+  try {
+    previewStatus.value = await store.stopSprintPreview(props.sprintId, 'backend')
+    ElMessage.success('后端预览已停止')
+  } catch (e) {
+    ElMessage.error(e.message || '停止后端预览失败')
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+async function sendBackendApiRequest() {
+  apiConsoleLoading.value = true
+  apiConsoleResponse.value = null
+  try {
+    let headers = {}
+    if (apiConsoleForm.value.headers?.trim()) {
+      headers = JSON.parse(apiConsoleForm.value.headers)
+    }
+    let body = undefined
+    if (apiConsoleForm.value.body?.trim()) {
+      body = apiConsoleForm.value.body
+    }
+    const response = await store.sendSprintPreviewApiRequest(props.sprintId, {
+      method: apiConsoleForm.value.method,
+      path: apiConsoleForm.value.path,
+      headers,
+      body
+    })
+    apiConsoleResponse.value = response
+  } catch (e) {
+    ElMessage.error(e.message || 'API 请求失败')
+  } finally {
+    apiConsoleLoading.value = false
+  }
+}
 
 async function loadDeveloperTaskConsole() {
   if (!props.sprintId || !isDeveloperStageSelected.value) return
@@ -1161,6 +1491,57 @@ async function confirmInput() {
   }
 }
 
+function openRegenerateDialog() {
+  regenerateAdvice.value = userInput.value || ''
+  regenerateDialogVisible.value = true
+}
+
+async function submitRegenerateAdvice() {
+  const advice = regenerateAdvice.value.trim()
+  if (!advice) return
+  const stage = pipelineStages.value[activeStageIndex.value]
+  if (!stage) return
+
+  const sorted = sortStageIterationsByPipeline(stage.iterations || [])
+  let iteration =
+    getRerunIterationForStage(stage) ||
+    sorted.find(i => ['waiting_input', 'pending', 'ready', 'running'].includes(i.status)) ||
+    sorted[0]
+  if (!iteration) {
+    ElMessage.error('当前阶段没有可重跑的角色')
+    return
+  }
+
+  const roleIndex = resolveRoleIndex(iteration)
+  isExecuting.value = true
+  try {
+    await store.inputIteration(props.sprintId, roleIndex, advice)
+
+    // 对已完成/失败角色，先重置再执行；对待执行角色直接执行。
+    if (['completed', 'confirmed', 'failed'].includes(iteration.status)) {
+      const data = await store.rerunIteration(props.sprintId, roleIndex)
+      if (data == null) {
+        throw new Error(store.error || '重跑初始化失败')
+      }
+    }
+
+    await store.executeIteration(
+      props.sprintId,
+      roleIndex,
+      null,
+      iteration.role === 'developer' ? { developerBackend: developerBackendChoice.value } : {}
+    )
+    regenerateDialogVisible.value = false
+    userInput.value = advice
+    ElMessage.success('已提交意见并启动重新生成')
+    await loadSprint()
+  } catch (e) {
+    ElMessage.error(e?.message || '重新生成失败')
+  } finally {
+    isExecuting.value = false
+  }
+}
+
 function copyOutput() {
   navigator.clipboard.writeText(editableOutput.value)
 }
@@ -1258,10 +1639,12 @@ function downloadFile(filePath, source = 'sprint') {
 async function loadSprint() {
   try {
     sprint.value = await store.fetchSprint(props.sprintId)
+    sprintDiskFiles.value = await store.fetchSprintFiles(props.sprintId)
     updateActiveStageIndex()
     editableOutput.value = selectedStageOutput.value ?? ''
     if (isDeveloperStageSelected.value) {
       await loadDeveloperTaskConsole()
+      await loadPreviewInfo()
     }
   } catch (e) {
     console.error('加载 sprint 失败:', e)
@@ -1301,6 +1684,9 @@ watch(() => props.sprintId, () => {
 watch(activeStageIndex, (val) => {
   selectedStage.value = val
   editableOutput.value = selectedStageOutput.value ?? ''
+  if (isDeveloperStageSelected.value) {
+    loadPreviewInfo()
+  }
 })
 </script>
 
@@ -2368,12 +2754,32 @@ watch(activeStageIndex, (val) => {
   color: #606266;
 }
 
+.regenerate-hint {
+  margin: 0 0 14px;
+}
+
+.regenerate-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.regenerate-dialog-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #606266;
+}
+
 /* Developer Task Console */
 .developer-task-console {
   background: linear-gradient(135deg, #f0f9ff 0%, #e6f4ff 100%);
   border: 1px solid #cce5ff;
   border-radius: 12px;
   padding: 16px 20px;
+}
+
+.ui-layout-check-tag {
+  margin-left: 10px;
 }
 
 .developer-console-top {
@@ -2611,6 +3017,72 @@ watch(activeStageIndex, (val) => {
   font-size: 13px;
   text-align: center;
   padding: 40px;
+}
+
+.preview-runtime-section {
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+}
+
+.preview-runtime-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.preview-runtime-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.preview-runtime-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.preview-runtime-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.api-console-section {
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+}
+
+.api-console-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.api-console-actions {
+  margin-top: 10px;
+}
+
+.api-console-response {
+  margin-top: 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.api-console-response pre {
+  margin: 8px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  background: #111827;
+  color: #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
 }
 
 .collab-handoff {

@@ -1,14 +1,10 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import { io } from 'socket.io-client'
+import { getApiUrl, getSocketUrl } from '../utils/api'
 
-const getApiUrl = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL
-  // 获取本机 IP 用于局域网访问
-  const localIP = window.location.hostname
-  return `http://${localIP}:3000`
-}
 const API_URL = getApiUrl()
+const SOCKET_URL = getSocketUrl()
 
 export const useProjectStore = defineStore('project', {
   state: () => ({
@@ -35,7 +31,7 @@ export const useProjectStore = defineStore('project', {
     connect() {
       if (this.socket) return
       
-      this.socket = io(API_URL, {
+      this.socket = io(SOCKET_URL, {
         transports: ['websocket', 'polling']
       })
       
@@ -457,6 +453,64 @@ export const useProjectStore = defineStore('project', {
         return data.files || []
       } catch (e) {
         return []
+      }
+    },
+
+    async fetchSprintPreviewMeta(sprintId) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/sprints/${sprintId}/preview/meta`)
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
+      }
+    },
+
+    async fetchSprintPreviewStatus(sprintId) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/sprints/${sprintId}/preview/status`)
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
+      }
+    },
+
+    async startSprintPreview(sprintId, target = 'frontend') {
+      this.error = null
+      try {
+        const { data } = await axios.post(`${API_URL}/api/sprints/${sprintId}/preview/start`, { target })
+        return data
+      } catch (e) {
+        const msg = e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
+      }
+    },
+
+    async stopSprintPreview(sprintId, target = 'all') {
+      this.error = null
+      try {
+        const { data } = await axios.post(`${API_URL}/api/sprints/${sprintId}/preview/stop`, { target })
+        return data
+      } catch (e) {
+        const msg = e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
+      }
+    },
+
+    async sendSprintPreviewApiRequest(sprintId, payload) {
+      this.error = null
+      try {
+        const { data } = await axios.post(`${API_URL}/api/sprints/${sprintId}/preview/api/request`, payload)
+        return data
+      } catch (e) {
+        const msg = e.response?.data?.message || e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
       }
     },
 
