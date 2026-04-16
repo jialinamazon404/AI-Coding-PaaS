@@ -162,6 +162,137 @@
         class="regenerate-hint"
       />
 
+      <div v-if="isRequirementStageSelected" class="detail-section figma-sync-section">
+        <h4 class="detail-section-title">Figma 设计稿同步</h4>
+        <p class="figma-sync-hint">
+          写入当前 Sprint 的 <code>workspace/…/product/figma-spec.md</code>，并在
+          <code>product/ui-layout.md</code> 顶部维护引用块。鉴权二选一：<strong>OAuth（推荐）</strong>浏览器授权一次；或环境变量
+          <code>FIGMA_TOKEN</code>（PAT）。
+        </p>
+        <div v-if="figmaOAuthStatus" class="figma-oauth-row">
+          <el-tag v-if="figmaOAuthStatus.connected" type="success" size="small">OAuth 已连接</el-tag>
+          <el-tag v-else-if="figmaOAuthStatus.configured" type="warning" size="small">OAuth 未连接</el-tag>
+          <el-tag v-if="figmaOAuthStatus.hasPat" type="info" size="small">已配置 PAT</el-tag>
+          <el-button
+            v-if="figmaOAuthStatus.configured && !figmaOAuthStatus.connected"
+            size="small"
+            type="primary"
+            @click="openFigmaOAuthConnect"
+          >
+            连接 Figma（浏览器 OAuth）
+          </el-button>
+          <el-button
+            v-if="figmaOAuthStatus.connected"
+            size="small"
+            plain
+            :loading="figmaOAuthDisconnectLoading"
+            @click="disconnectFigmaOAuthSession"
+          >
+            断开 OAuth
+          </el-button>
+        </div>
+        <el-alert
+          v-if="figmaOAuthStatus && !canSyncFigma"
+          type="warning"
+          :closable="false"
+          class="figma-sync-row"
+          :title="
+            figmaOAuthStatus.configured
+              ? '请点击「连接 Figma」在浏览器中完成授权（需与 API 配置的 Redirect URI 一致）。'
+              : 'API 未配置 OAuth（FIGMA_CLIENT_ID/SECRET）且无 FIGMA_TOKEN 时无法同步。'
+          "
+        />
+        <el-input v-model="figmaSyncForm.figmaUrl" placeholder="粘贴 Figma 文件或 Frame 链接（推荐）" clearable />
+        <el-input
+          v-model="figmaSyncForm.fileKey"
+          class="figma-sync-row"
+          placeholder="Figma file key（可选；可从链接解析）"
+          clearable
+        />
+        <el-input
+          v-model="figmaSyncForm.nodeIds"
+          class="figma-sync-row"
+          placeholder="节点 ids，逗号分隔，如 1:2,3:4（可选；大文件强烈建议限定节点）"
+          clearable
+        />
+        <div class="figma-sync-actions">
+          <el-button type="primary" :loading="figmaSyncLoading" :disabled="!canSyncFigma" @click="runFigmaSync">
+            同步到 workspace
+          </el-button>
+        </div>
+        <el-alert
+          v-if="sprint?.figma?.lastSyncedAt"
+          :title="`上次同步：${sprint.figma.lastSyncedAt}`"
+          type="success"
+          :closable="false"
+          class="figma-sync-last"
+        />
+      </div>
+
+      <div v-if="isTestingStageSelected" class="detail-section test-report-structured">
+        <h4 class="detail-section-title">测试报告明细</h4>
+        <p v-if="testReportLoadError" class="test-report-error">{{ testReportLoadError }}</p>
+        <el-empty v-else-if="!testReportHasAnyTable" description="暂无结构化表格（可能尚未生成 tester/test-report.md 或为旧版模板）" />
+        <el-collapse v-else v-model="testReportCollapse">
+          <el-collapse-item
+            v-if="testReportParsed?.userStories?.headers?.length"
+            title="逐用户故事验证"
+            name="stories"
+          >
+            <el-table :data="testReportStoryRows" border size="small" stripe style="width: 100%">
+              <el-table-column
+                v-for="h in testReportParsed.userStories.headers"
+                :key="h"
+                :prop="h"
+                :label="h"
+                min-width="120"
+              />
+            </el-table>
+          </el-collapse-item>
+          <el-collapse-item
+            v-if="testReportParsed?.traceability?.headers?.length"
+            title="需求-用例-结果追溯矩阵"
+            name="matrix"
+          >
+            <el-table :data="testReportMatrixRows" border size="small" stripe style="width: 100%">
+              <el-table-column
+                v-for="h in testReportParsed.traceability.headers"
+                :key="h"
+                :prop="h"
+                :label="h"
+                min-width="120"
+              />
+            </el-table>
+          </el-collapse-item>
+          <el-collapse-item v-if="testReportParsed?.tcResults?.headers?.length" title="逐 TC 结论" name="tc">
+            <el-table :data="testReportTcRows" border size="small" stripe style="width: 100%">
+              <el-table-column
+                v-for="h in testReportParsed.tcResults.headers"
+                :key="h"
+                :prop="h"
+                :label="h"
+                min-width="120"
+              />
+            </el-table>
+          </el-collapse-item>
+          <el-collapse-item
+            v-if="testReportParsed?.securityFindings?.headers?.length"
+            title="安全发现明细（FIND）"
+            name="sec"
+          >
+            <el-table :data="testReportSecRows" border size="small" stripe style="width: 100%">
+              <el-table-column
+                v-for="h in testReportParsed.securityFindings.headers"
+                :key="h"
+                :prop="h"
+                :label="h"
+                min-width="120"
+              />
+            </el-table>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+
       <!-- 用户输入 -->
       <div v-if="currentIterationNeedsInput" class="user-input-section">
         <h4 class="detail-section-title">
@@ -579,6 +710,8 @@ import {
   getRerunStepOptions
 } from '../config/sprintStageConfig.js'
 import { parseTaskExecutionMetrics } from '../utils/taskMetrics.js'
+import { parseStructuredTestReport } from '../utils/testReportParse.js'
+import { getApiUrl } from '../utils/api'
 import { ElMessage } from 'element-plus'
 import { 
   VideoPlay, Document, Connection, CircleCheck, Loading, 
@@ -639,6 +772,14 @@ const apiConsoleForm = ref({
 })
 const apiConsoleResponse = ref(null)
 
+const figmaSyncForm = ref({ figmaUrl: '', fileKey: '', nodeIds: '' })
+const figmaSyncLoading = ref(false)
+const figmaOAuthStatus = ref(null)
+const figmaOAuthDisconnectLoading = ref(false)
+const testReportParsed = ref(null)
+const testReportLoadError = ref('')
+const testReportCollapse = ref(['stories', 'matrix', 'tc', 'sec'])
+
 const currentIterationNeedsInput = computed(() => {
   const stage = currentStage.value
   if (!stage) return false
@@ -660,6 +801,16 @@ const showDeveloperBackendPicker = computed(() => {
 const isDeveloperStageSelected = computed(() => {
   const stage = currentStage.value
   return !!stage?.agents?.some(a => a.role === 'developer')
+})
+
+const isRequirementStageSelected = computed(() => currentStage.value?.id === 'requirement')
+const isTestingStageSelected = computed(() => currentStage.value?.id === 'testing')
+
+/** 服务端 PAT 或 OAuth refresh 存在时可同步 */
+const canSyncFigma = computed(() => {
+  const s = figmaOAuthStatus.value
+  if (!s) return true
+  return !!(s.hasPat || s.connected)
 })
 
 const developerRoleIndex = computed(() => {
@@ -903,6 +1054,30 @@ const uiLayoutCheckBadge = computed(() => {
 // 当前阶段
 const currentStage = computed(() => {
   return pipelineStages.value[activeStageIndex.value] || null
+})
+
+function tableToObjects(tbl) {
+  if (!tbl?.headers?.length) return []
+  return tbl.rows.map((cells) => {
+    const row = {}
+    tbl.headers.forEach((h, i) => {
+      row[h] = cells[i] ?? ''
+    })
+    return row
+  })
+}
+
+const testReportStoryRows = computed(() => tableToObjects(testReportParsed.value?.userStories))
+const testReportMatrixRows = computed(() => tableToObjects(testReportParsed.value?.traceability))
+const testReportTcRows = computed(() => tableToObjects(testReportParsed.value?.tcResults))
+const testReportSecRows = computed(() => tableToObjects(testReportParsed.value?.securityFindings))
+
+const testReportHasAnyTable = computed(() => {
+  const p = testReportParsed.value
+  if (!p) return false
+  return [p.userStories, p.traceability, p.tcResults, p.securityFindings].some(
+    (t) => t?.headers?.length && t?.rows?.length
+  )
 })
 
 function diskPathMatchesExpectedOutput(diskPaths, expectedPath) {
@@ -1636,16 +1811,114 @@ function downloadFile(filePath, source = 'sprint') {
   link.click()
 }
 
+function syncFigmaFormFromSprint() {
+  const f = sprint.value?.figma
+  if (!f) return
+  figmaSyncForm.value.fileKey = f.fileKey || ''
+  figmaSyncForm.value.figmaUrl = f.figmaUrl || ''
+  figmaSyncForm.value.nodeIds = Array.isArray(f.nodeIds) ? f.nodeIds.join(', ') : f.nodeIds || ''
+}
+
+async function loadFigmaOAuthStatus() {
+  if (!isRequirementStageSelected.value) return
+  figmaOAuthStatus.value = await store.fetchFigmaOAuthStatus()
+}
+
+function handleFigmaOAuthReturnQuery() {
+  const q = new URLSearchParams(window.location.search)
+  const mode = q.get('figma_oauth')
+  if (mode === 'success') {
+    ElMessage.success('Figma OAuth 已连接')
+    const clean = window.location.pathname + (window.location.hash || '')
+    window.history.replaceState({}, '', clean)
+    loadFigmaOAuthStatus()
+  } else if (mode === 'error') {
+    ElMessage.error(q.get('figma_error') || 'Figma OAuth 失败')
+    const clean = window.location.pathname + (window.location.hash || '')
+    window.history.replaceState({}, '', clean)
+    loadFigmaOAuthStatus()
+  }
+}
+
+function openFigmaOAuthConnect() {
+  const api = getApiUrl().replace(/\/$/, '')
+  const redirect = encodeURIComponent(window.location.href)
+  window.location.href = `${api}/api/figma/oauth/start?redirect=${redirect}`
+}
+
+async function disconnectFigmaOAuthSession() {
+  figmaOAuthDisconnectLoading.value = true
+  try {
+    await store.disconnectFigmaOAuth()
+    ElMessage.success('已清除本机 OAuth 凭据')
+    await loadFigmaOAuthStatus()
+  } catch (e) {
+    ElMessage.error(e.message || '断开失败')
+  } finally {
+    figmaOAuthDisconnectLoading.value = false
+  }
+}
+
+async function loadTestReportDetail() {
+  testReportLoadError.value = ''
+  testReportParsed.value = null
+  if (!props.sprintId || !isTestingStageSelected.value) return
+  try {
+    const tr = await store.fetchSprintFileContent(props.sprintId, 'tester/test-report.md')
+    let sr = null
+    try {
+      sr = await store.fetchSprintFileContent(props.sprintId, 'tester/security-report.md')
+    } catch {
+      sr = null
+    }
+    const tBody = tr?.content ?? ''
+    const sBody = sr?.content ?? ''
+    testReportParsed.value = parseStructuredTestReport(tBody, sBody)
+  } catch (e) {
+    if (e.response?.status === 404) {
+      testReportLoadError.value = ''
+      testReportParsed.value = parseStructuredTestReport('', '')
+      return
+    }
+    testReportLoadError.value = e.response?.data?.error || e.message || '加载测试报告失败'
+  }
+}
+
+async function runFigmaSync() {
+  figmaSyncLoading.value = true
+  try {
+    const body = {
+      figmaUrl: figmaSyncForm.value.figmaUrl?.trim() || undefined,
+      fileKey: figmaSyncForm.value.fileKey?.trim() || undefined,
+      nodeIds: figmaSyncForm.value.nodeIds?.trim() || undefined
+    }
+    await store.syncFigmaToSprint(props.sprintId, body)
+    sprint.value = await store.fetchSprint(props.sprintId)
+    sprintDiskFiles.value = await store.fetchSprintFiles(props.sprintId)
+    syncFigmaFormFromSprint()
+    ElMessage.success('Figma 已同步到 workspace')
+  } catch (e) {
+    ElMessage.error(e.message || '同步失败')
+  } finally {
+    figmaSyncLoading.value = false
+  }
+}
+
 async function loadSprint() {
   try {
     sprint.value = await store.fetchSprint(props.sprintId)
     sprintDiskFiles.value = await store.fetchSprintFiles(props.sprintId)
+    syncFigmaFormFromSprint()
     updateActiveStageIndex()
     editableOutput.value = selectedStageOutput.value ?? ''
     if (isDeveloperStageSelected.value) {
       await loadDeveloperTaskConsole()
       await loadPreviewInfo()
     }
+    if (isTestingStageSelected.value) {
+      await loadTestReportDetail()
+    }
+    await loadFigmaOAuthStatus()
   } catch (e) {
     console.error('加载 sprint 失败:', e)
   }
@@ -1674,6 +1947,7 @@ function updateActiveStageIndex() {
 }
 
 onMounted(() => {
+  handleFigmaOAuthReturnQuery()
   loadSprint()
 })
 
@@ -1687,6 +1961,10 @@ watch(activeStageIndex, (val) => {
   if (isDeveloperStageSelected.value) {
     loadPreviewInfo()
   }
+  if (isTestingStageSelected.value) {
+    loadTestReportDetail()
+  }
+  loadFigmaOAuthStatus()
 })
 </script>
 
@@ -2756,6 +3034,31 @@ watch(activeStageIndex, (val) => {
 
 .regenerate-hint {
   margin: 0 0 14px;
+}
+
+.figma-sync-section .figma-sync-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.figma-sync-row {
+  margin-top: 8px;
+}
+
+.figma-sync-actions {
+  margin-top: 10px;
+}
+
+.figma-sync-last {
+  margin-top: 12px;
+}
+
+.test-report-structured .test-report-error {
+  color: #f56c6c;
+  font-size: 13px;
+  margin: 0 0 10px;
 }
 
 .regenerate-dialog-body {

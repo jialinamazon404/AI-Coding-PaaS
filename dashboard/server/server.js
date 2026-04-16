@@ -13,6 +13,24 @@ import { ROUTES } from '../../config/pipelineConfig.js';
 import { createHarness } from '../../harness/index.js';
 import { buildWsBase, normalizeHost, resolveApiBase } from '../../utils/network-address.js';
 import { buildPreviewUrl, detectSprintPreviewTargets } from './preview-target.js';
+import {
+  syncFigmaToSprint,
+  parseFigmaUrl,
+  normalizeNodeIds,
+  figmaUrlFromKey
+} from './figma-sync.js';
+import {
+  buildFigmaAuthorizeUrl,
+  clearOAuthTokens,
+  consumeOAuthState,
+  createOAuthState,
+  exchangeAuthorizationCode,
+  figmaOAuthConfigured,
+  figmaOAuthConnected,
+  getFigmaOAuthRedirectUri,
+  resolveFigmaRestAuth,
+  saveOAuthRefreshToken
+} from './figma-oauth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -1095,6 +1113,181 @@ app.put('/api/sprints/:id', async (req, res) => {
     res.json(sprint);
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Figma OAuth：状态、授权入口、回调、断开
+app.get('/api/figma/oauth/status', async (_req, res) => {
+  try {
+    const connected = await figmaOAuthConnected();
+    res.json({
+      configured: figmaOAuthConfigured(),
+      connected,
+      hasPat: !!(process.env.FIGMA_TOKEN || '').trim(),
+      redirectUri: getFigmaOAuthRedirectUri()
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/figma/oauth/start', async (req, res) => {
+  try {
+    if (!figmaOAuthConfigured()) {
+      return res.status(400).json({
+        error:
+          '未配置 OAuth：请设置 FIGMA_CLIENT_ID 与 FIGMA_CLIENT_SECRET，并在 Figma 开发者后台注册 Redirect URI（与 FIGMA_OAUTH_REDIRECT_URI 或 API_BASE 推导一致）。'
+      });
+    }
+    const redirectAfter = typeof req.query.redirect === 'string' ? req.query.redirect.trim() : '';
+    const state = createOAuthState(redirectAfter);
+    const url = buildFigmaAuthorizeUrl(state);
+    res.redirect(302, url);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/figma/oauth/callback', async (req, res) => {
+  try {
+    const { code, state, error, error_description: errorDescription } = req.query;
+    const failRedirect = (msg) => {
+      const base = (
+        process.env.FIGMA_OAUTH_FAILURE_REDIRECT ||
+        process.env.FIGMA_OAUTH_SUCCESS_REDIRECT ||
+        'http://127.0.0.1:5173'
+      ).trim();
+      const u = new URL(base.includes('://') ? base : `http://${base}`);
+      u.searchParams.set('figma_oauth', 'error');
+      u.searchParams.set('figma_error', msg);
+      res.redirect(302, u.toString());
+    };
+
+    if (error) {
+      return failRedirect(String(errorDescription || error));
+    }
+    if (!code || !state) {
+      return failRedirect('missing_code_or_state');
+    }
+
+    const entry = consumeOAuthState(String(state));
+    if (!entry) {
+      return failRedirect('invalid_or_expired_state');
+    }
+
+    const redirectUri = getFigmaOAuthRedirectUri();
+    const tokens = await exchangeAuthorizationCode(String(code), redirectUri);
+    if (!tokens.refresh_token) {
+      return failRedirect('no_refresh_token_in_response');
+    }
+    await saveOAuthRefreshToken(tokens.refresh_token);
+
+    const okTarget =
+      entry.redirectAfter ||
+      (process.env.FIGMA_OAUTH_SUCCESS_REDIRECT || '').trim() ||
+      'http://127.0.0.1:5173';
+    const u = new URL(okTarget.includes('://') ? okTarget : `http://${okTarget}`);
+    u.searchParams.set('figma_oauth', 'success');
+    res.redirect(302, u.toString());
+  } catch (e) {
+    res.status(500).send(`Figma OAuth callback error: ${e.message}`);
+  }
+});
+
+app.delete('/api/figma/oauth/session', async (_req, res) => {
+  try {
+    await clearOAuthTokens();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Figma REST → workspace/<sprintId>/product/figma-spec.md，并回写 ui-layout 引用块
+app.post('/api/sprints/:sprintId/figma/sync', async (req, res) => {
+  try {
+    let restAuth;
+    try {
+      restAuth = await resolveFigmaRestAuth();
+    } catch (e) {
+      return res.status(400).json({
+        error: `Figma 鉴权失败：${e.message}。请检查 FIGMA_TOKEN（PAT）或完成 OAuth 连接并确保 refresh 有效。`
+      });
+    }
+    if (!restAuth) {
+      return res.status(400).json({
+        error:
+          '未配置 Figma 鉴权：请在环境中设置 FIGMA_TOKEN（PAT），或配置 FIGMA_CLIENT_ID/FIGMA_CLIENT_SECRET 并完成 OAuth 授权（GET /api/figma/oauth/start）。'
+      });
+    }
+
+    const sprintId = req.params.sprintId;
+    const sprint = await sprintManager.get(sprintId);
+    if (!sprint) {
+      return res.status(404).json({ error: 'Sprint not found' });
+    }
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    let { fileKey, figmaUrl } = body;
+    let nodeIds = body.nodeIds;
+
+    if (figmaUrl && typeof figmaUrl === 'string') {
+      const parsed = parseFigmaUrl(figmaUrl.trim());
+      if (parsed) {
+        fileKey = fileKey || parsed.fileKey;
+        if (parsed.nodeIds?.length) {
+          const fromBody = normalizeNodeIds(nodeIds);
+          nodeIds = [...new Set([...fromBody, ...parsed.nodeIds])];
+        }
+      }
+    }
+
+    fileKey = (fileKey || sprint.figma?.fileKey || process.env.FIGMA_FILE_KEY || '').trim();
+    if (!fileKey) {
+      return res.status(400).json({
+        error:
+          '缺少 Figma file key：请在请求体提供 fileKey、粘贴含 file key 的 figmaUrl，或在环境中设置 FIGMA_FILE_KEY。'
+      });
+    }
+
+    const fromSprint = sprint.figma?.nodeIds;
+    const fromEnv = process.env.FIGMA_NODE_IDS;
+    let merged = normalizeNodeIds(nodeIds);
+    if (!merged.length && fromSprint) merged = normalizeNodeIds(fromSprint);
+    if (!merged.length && fromEnv) merged = normalizeNodeIds(fromEnv);
+
+    const workspacePath = path.join(WORKSPACE_DIR, sprint.id);
+    const resolvedUrl =
+      (typeof figmaUrl === 'string' && figmaUrl.trim()) ||
+      sprint.figma?.figmaUrl ||
+      figmaUrlFromKey(fileKey, merged);
+
+    const auth =
+      restAuth.mode === 'pat'
+        ? { type: 'pat', secret: restAuth.token }
+        : { type: 'oauth', accessToken: restAuth.accessToken };
+
+    const result = await syncFigmaToSprint({
+      workspacePath,
+      fileKey,
+      nodeIds: merged,
+      figmaUrl: resolvedUrl,
+      auth
+    });
+
+    await sprintManager.update(sprint.id, {
+      figma: {
+        fileKey,
+        nodeIds: merged.length ? merged : null,
+        figmaUrl: resolvedUrl,
+        lastSyncedAt: new Date().toISOString()
+      }
+    });
+
+    io.emit('sprint:updated', await sprintManager.get(sprint.id));
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message || String(e) });
   }
 });
 

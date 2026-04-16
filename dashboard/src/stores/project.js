@@ -456,6 +456,57 @@ export const useProjectStore = defineStore('project', {
       }
     },
 
+    async fetchSprintFileContent(sprintId, filePath) {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/sprints/${sprintId}/file`, {
+          params: { file: filePath }
+        })
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        throw e
+      }
+    },
+
+    async syncFigmaToSprint(sprintId, body) {
+      this.error = null
+      try {
+        const { data } = await axios.post(`${API_URL}/api/sprints/${sprintId}/figma/sync`, body || {})
+        if (this.currentSprint?.id === sprintId) {
+          this.currentSprint = await this.fetchSprint(sprintId)
+        }
+        return data
+      } catch (e) {
+        const msg = e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
+      }
+    },
+
+    async fetchFigmaOAuthStatus() {
+      this.error = null
+      try {
+        const { data } = await axios.get(`${API_URL}/api/figma/oauth/status`)
+        return data
+      } catch (e) {
+        this.error = e.response?.data?.error || e.message
+        return null
+      }
+    },
+
+    async disconnectFigmaOAuth() {
+      this.error = null
+      try {
+        const { data } = await axios.delete(`${API_URL}/api/figma/oauth/session`)
+        return data
+      } catch (e) {
+        const msg = e.response?.data?.error || e.message
+        this.error = msg
+        throw new Error(msg)
+      }
+    },
+
     async fetchSprintPreviewMeta(sprintId) {
       this.error = null
       try {
