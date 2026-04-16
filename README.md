@@ -1,4 +1,4 @@
-# DevForge
+# AI Coding PaaS
 
 多角色 AI 软件交付编排系统：把自然语言需求走成可追踪的流水线（需求 → 设计 → 开发 → 测试 → 运维 → 优化），由 **Dashboard + API** 驱动，核心执行在 **`sprint-agent-executor.js`**（OpenCode CLI）。
 
